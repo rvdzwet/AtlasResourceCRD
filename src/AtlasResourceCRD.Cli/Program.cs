@@ -60,6 +60,7 @@ public static class Program
             {
                 "scan" => await RunScanCommand(cmdArgs, loggerFactory, logger),
                 "validate" => RunValidateCommand(cmdArgs, logger),
+                "html" or "render" => RunHtmlCommand(cmdArgs, logger),
                 "schema" => RunSchemaCommand(cmdArgs, logger),
                 "init" => RunInitCommand(cmdArgs, logger),
                 _ => HandleUnknownCommand(command)
@@ -298,6 +299,62 @@ public static class Program
         foreach (var warn in validation.Warnings) logger.LogWarning("  [WARN] {Warning}", warn);
 
         return 1;
+    }
+
+    private static int RunHtmlCommand(string[] args, ILogger logger)
+    {
+        var inputFile = args.FirstOrDefault(a => !a.StartsWith("-")) ?? "atlas.yaml";
+        var fullInput = Path.GetFullPath(inputFile);
+
+        if (!File.Exists(fullInput))
+        {
+            logger.LogError("Target AtlasResource manifest not found: {Path}", fullInput);
+            return 1;
+        }
+
+        string? outputFile = null;
+        var noOpen = false;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] is "-o" or "--output" && i + 1 < args.Length)
+            {
+                outputFile = args[++i];
+            }
+            else if (args[i] is "--no-open")
+            {
+                noOpen = true;
+            }
+        }
+
+        outputFile ??= Path.ChangeExtension(fullInput, ".html");
+        var fullOutput = Path.GetFullPath(outputFile);
+
+        var yaml = File.ReadAllText(fullInput);
+        var resource = CrdYamlSerializer.DeserializeYaml(yaml);
+
+        HtmlVisualizerGenerator.GenerateToFile(resource, fullOutput);
+        logger.LogInformation("Generated interactive HTML dashboard: {Path}", fullOutput);
+
+        if (!noOpen)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = fullOutput,
+                    UseShellExecute = true
+                };
+                System.Diagnostics.Process.Start(psi);
+                logger.LogInformation("Opened interactive documentation in default browser.");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning("Could not auto-open browser: {Message}", ex.Message);
+            }
+        }
+
+        return 0;
     }
 
     private static int RunSchemaCommand(string[] args, ILogger logger)

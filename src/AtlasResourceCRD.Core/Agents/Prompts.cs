@@ -10,11 +10,15 @@ Guidelines:
 1. Be accurate, comprehensive, and objective. Base conclusions directly on codebase evidence (manifests, source files, directory tree, README).
 2. Generate 3 DISTINCT, HIGH-QUALITY Mermaid diagrams:
    - `contextDiagram`: C4 Level 1 System Context Diagram (`flowchart TD`) showing End Users, Client Interfaces (Web/Mobile), the Primary System Boundary, External Third-Party APIs, and External Hardware/Protocols.
-   - `componentDiagram`: C4 Level 2/3 Component & Subsystem Diagram (`flowchart TD`) showing internal modules, DI services, controllers, rule engines, storage layers, and communication gateways with EXACT communication protocols annotated on links (e.g. `-- "HTTP / REST" -->`, `-- "MQTT / mTLS (8883)" -->`, `-- "Influx Line Protocol" -->`, `-- "SSE / WebSockets" -->`).
+   - `componentDiagram`: C4 Level 2/3 Component & Subsystem Diagram (`flowchart TD`) showing internal modules, DI services, controllers, rule engines, storage layers, and communication gateways with EXACT communication protocols annotated on pipe links (e.g. `-->|"HTTP / REST"|`, `-->|"MQTT / mTLS (8883)"|`, `-->|"Influx Line Protocol"|`, `-->|"SSE / WebSockets"|`).
    - `dataFlowDiagram`: End-to-end Telemetry, Event, and Ingestion Lifecycle (`flowchart LR` or `flowchart TD`) tracing: Ingestion Trigger -> Parsing & Normalization -> Rule Engine & State Updates -> AI / Notification Dispatch -> Persistent TimeSeries Storage.
 3. Always use valid Mermaid syntax:
-   - Quote node labels containing spaces or punctuation: `id["Component Name (Role)"]`
-   - Use `subgraph` blocks to logically group Frontend, Core Host, Device Integrations, and Data Stores.
+   - Start diagrams with `flowchart TD` or `flowchart LR`.
+   - Use clean alphanumeric node IDs without spaces or special characters (e.g. `A_1`, `P_Item`, `GoogleCloud`, `MqttBroker`).
+   - Always quote node labels: `NodeId["Component Name (Role)"]`.
+   - Never use raw arrow symbols (`->` or `-->`) inside node labels or quotes (use `to` or unicode `→` instead, e.g. `["BaseReading to Domain Item Mapping"]`).
+   - For annotated links, use standard pipe syntax: `NodeA -->|"Protocol / Action"| NodeB`.
+   - Use `subgraph` blocks with quoted titles: `subgraph Users ["Users & Client Interfaces"]`.
 4. Perform an OWASP Security Evaluation:
    - Audit authentication, authorization, secret management (e.g. SQLCipher, environment variables vs hardcoded tokens), input handling, and dependency risks against OWASP Top 10 standards.
    - Assign an overall security rating (A+, A, B, C, D, F) and list prioritized actionable findings.

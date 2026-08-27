@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Web;
 using AtlasResourceCRD.Core.Models;
 using AtlasResourceCRD.Core.Serialization;
@@ -19,9 +20,9 @@ public static class HtmlVisualizerGenerator
         var qual = spec.Quality;
         var yaml = CrdYamlSerializer.SerializeYaml(resource);
 
-        var contextDiagram = !string.IsNullOrWhiteSpace(arch.ContextDiagram) ? arch.ContextDiagram : arch.MermaidDiagram;
-        var componentDiagram = !string.IsNullOrWhiteSpace(arch.ComponentDiagram) ? arch.ComponentDiagram : arch.MermaidDiagram;
-        var dataFlowDiagram = !string.IsNullOrWhiteSpace(arch.DataFlowDiagram) ? arch.DataFlowDiagram : arch.MermaidDiagram;
+        var contextDiagram = SanitizeMermaidDiagram(!string.IsNullOrWhiteSpace(arch.ContextDiagram) ? arch.ContextDiagram : arch.MermaidDiagram);
+        var componentDiagram = SanitizeMermaidDiagram(!string.IsNullOrWhiteSpace(arch.ComponentDiagram) ? arch.ComponentDiagram : arch.MermaidDiagram);
+        var dataFlowDiagram = SanitizeMermaidDiagram(!string.IsNullOrWhiteSpace(arch.DataFlowDiagram) ? arch.DataFlowDiagram : arch.MermaidDiagram);
 
         var sb = new StringBuilder();
         sb.AppendLine("<!DOCTYPE html>");
@@ -473,6 +474,29 @@ public static class HtmlVisualizerGenerator
         return sb.ToString();
     }
 
+    private static string SanitizeMermaidDiagram(string? diagram)
+    {
+        if (string.IsNullOrWhiteSpace(diagram))
+            return "flowchart TD\n  Empty[No Diagram Data]";
+
+        var cleaned = diagram.Trim();
+
+        // 1. Replace raw arrow symbols inside node labels to prevent Mermaid lexer syntax errors
+        cleaned = Regex.Replace(cleaned, @"\[""(.*?)->(.*?)""\]", "[\"$1→$2\"]");
+        cleaned = Regex.Replace(cleaned, @"\[""(.*?)-->(.*?)""\]", "[\"$1→$2\"]");
+
+        // 2. Ensure standard diagram header
+        if (!cleaned.StartsWith("flowchart", StringComparison.OrdinalIgnoreCase) &&
+            !cleaned.StartsWith("graph", StringComparison.OrdinalIgnoreCase) &&
+            !cleaned.StartsWith("sequenceDiagram", StringComparison.OrdinalIgnoreCase) &&
+            !cleaned.StartsWith("C4", StringComparison.OrdinalIgnoreCase))
+        {
+            cleaned = "flowchart TD\n" + cleaned;
+        }
+
+        return cleaned;
+    }
+
     private static string RenderStars(double stars)
     {
         var full = (int)Math.Floor(stars);
@@ -645,7 +669,7 @@ body {
   border: 1px solid var(--border-color);
   overflow: hidden;
   position: relative;
-  min-height: 520px;
+  min-height: 540px;
   cursor: grab;
 }
 
@@ -654,16 +678,42 @@ body {
 .diagram-viewport {
   width: 100%;
   height: 100%;
+  min-height: 500px;
   transform-origin: 0 0;
   transition: transform 0.05s ease-out;
   padding: 2rem;
-  display: flex;
-  justify-content: center;
+  position: relative;
 }
 
-.diagram-pane { display: none; width: 100%; }
-.diagram-pane.active { display: block; }
-.diagram-pane .mermaid { display: flex; justify-content: center; }
+.diagram-pane {
+  display: block;
+  visibility: hidden;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.diagram-pane.active {
+  position: relative;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.diagram-pane .mermaid {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.diagram-pane .mermaid svg {
+  max-width: 100% !important;
+  height: auto !important;
+}
 
 /* Fullscreen Mode */
 .card.fullscreen {
@@ -755,7 +805,12 @@ body {
 """;
 
     private static string GetClientJs() => """
-mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  securityLevel: 'loose',
+  flowchart: { useMaxWidth: false, htmlLabels: true, curve: 'basis' }
+});
 
 var scale = 1;
 var translateX = 0;
@@ -772,7 +827,7 @@ function updateTransform() {
 }
 
 function zoomDiagram(factor) {
-  scale = Math.min(Math.max(0.3, scale * factor), 4);
+  scale = Math.min(Math.max(0.2, scale * factor), 5);
   updateTransform();
 }
 
@@ -830,8 +885,24 @@ container.addEventListener('wheel', function(e) {
   zoomDiagram(factor);
 });
 
+var renderedPanes = {};
+
+async function renderPane(paneId) {
+  if (renderedPanes[paneId]) return;
+  var pane = document.getElementById(paneId);
+  if (!pane) return;
+  var pre = pane.querySelector('pre.mermaid');
+  if (!pre) return;
+  try {
+    await mermaid.run({ nodes: [pre] });
+    renderedPanes[paneId] = true;
+  } catch (err) {
+    console.error('Mermaid render error for ' + paneId, err);
+  }
+}
+
 // Tab Switcher
-function switchDiagram(type, btn) {
+async function switchDiagram(type, btn) {
   var tabs = document.querySelectorAll('.d-tab');
   tabs.forEach(function(t) { t.classList.remove('active'); });
   btn.classList.add('active');
@@ -842,6 +913,7 @@ function switchDiagram(type, btn) {
   var activePane = document.getElementById('diag-' + type);
   if (activePane) {
     activePane.classList.add('active');
+    await renderPane('diag-' + type);
   }
   resetZoom();
 }
@@ -876,6 +948,15 @@ function inspectComponent(name) {
 
 function closeDrawer() {
   document.getElementById('inspectorDrawer').classList.remove('open');
+}
+
+// Startup
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function() {
+    renderPane('diag-component');
+  });
+} else {
+  renderPane('diag-component');
 }
 """;
 }
