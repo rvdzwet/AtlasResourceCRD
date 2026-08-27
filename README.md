@@ -24,6 +24,17 @@
   - **`contextDiagram` (C4 Level 1 System Context)**: Maps End Users, Client Interfaces, Core System Boundaries, External Cloud APIs, and Local Network Hardware.
   - **`componentDiagram` (C4 Level 2/3 Component & Subsystem)**: Visualizes internal modules, controllers, rule engines, and plugin layers with **exact protocol annotations on links** (`HTTP/REST`, `MQTT/mTLS 8883`, `Influx Line Protocol`, `Matter UDP`, `SSE`).
   - **`dataFlowDiagram` (Data & Event Lifecycle)**: Traces the end-to-end telemetry ingestion, normalization, rule execution, AI analysis, and time-series persistence pipeline.
+- 🚨 **Executive Risk & Blast Radius Assessment**:
+  - Uncompromising, critical principal auditor persona designed specifically for **high-security, air-gapped, and regulated environments**.
+  - **Production Readiness Verdict**: 🟢 `Approved`, 🟡 `Conditional`, or 🔴 `Blocked`.
+  - **Blast Radius & Cascade Containment**: Evaluation of catastrophic failure scenarios, dependency downtime, and crash isolation.
+  - **Restricted Environment & Air-Gap Compliance**: Validates offline operation, credential zero-trust, and boundary isolation.
+  - **Top Risks Matrix**: Prioritized matrix mapping risk levels, impacts, trigger scenarios, and required mitigations.
+- 🛡️ **STRIDE Threat Model & Attack Surface Mapping**:
+  - Delineates **Trust Boundaries** (e.g. Public Internet/Cloud vs Local LAN vs In-Process Memory vs Encrypted Storage).
+  - Evaluates Attack Surface across exposed ports (HTTP, WebSockets, MQTT 1883/8883, Matter UDP 5540, config files).
+  - Enumerate concrete Threat Vectors across **STRIDE** categories: **S**poofing, **T**ampering, **R**epudiation, **I**nformation Disclosure, **D**enial of Service, and **E**levation of Privilege.
+  - Interactive, searchable threat vectors table with severity, mitigation controls, and residual risk ratings.
 - 🛡️ **OWASP Top 10 Security Audit**:
   - Evaluates Broken Access Control, Cryptographic Failures, Injection, Insecure Design, Misconfiguration, Dependency Posture, Auth Failures, and SSRF.
   - Generates an **Overall Security Grade** (`A+`, `A`, `B`...), compliance checklist, and prioritized findings with actionable mitigations.

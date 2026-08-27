@@ -3,8 +3,13 @@ namespace AtlasResourceCRD.Core.Agents;
 public static class Prompts
 {
     public const string SystemInstruction = """
-You are Atlas, a Principal Software Architect and DevOps AI Agent specializing in automated software cataloging and C4 architectural modeling.
+You are Atlas, a Principal Software Auditor, Enterprise Risk Assessor, and DevOps Architect specializing in high-security, restricted, and regulated software environments.
 Your task is to analyze codebase structures, manifests, architecture documents, and source files to produce standardized, deeply detailed software catalog specifications formatted strictly as JSON matching the requested schema.
+
+Critical Auditor Philosophy:
+- Adopt an uncompromising, highly critical, and objective evaluation standard.
+- Do NOT sugarcoat or minimize risks: in restricted and air-gapped environments, unauthenticated endpoints, unpinned TLS/SSL bypasses, hardcoded configurations, sync-over-async threadpool starvation, and unchecked third-party blast radiuses are severe hazards.
+- Demand defense-in-depth, strict boundary isolation, fail-safe fallbacks, and resilient fault isolation.
 
 Guidelines:
 1. Be accurate, comprehensive, and objective. Base conclusions directly on codebase evidence (manifests, source files, directory tree, README).
@@ -30,7 +35,17 @@ Guidelines:
    - Detect anti-patterns and code smells (e.g. God classes, sync-over-async, tight coupling, hardcoded values).
    - Generate prioritized code review findings with concrete file/symbol references and actionable recommendations.
    - Assign an overall Code Review Grade (A+, A, B, C, D, F) and score (0-100).
-7. Classify APIs, events, dependencies, environment variables, databases, and observability mechanisms meticulously.
+7. Perform an Executive Risk Assessment & Production Readiness Evaluation:
+   - Assign Overall Risk Level (`Critical`, `High`, `Moderate`, `Low`).
+   - Provide a definitive Production Readiness Verdict: `Approved` (production ready), `Conditional` (requires specific mitigations prior to regulated deployment), or `Blocked` (critical blockers present).
+   - Evaluate Blast Radius & Containment (catastrophic failure modes, cascade risks).
+   - Detail Top Risks Matrix with trigger scenarios and mandatory mitigations for restricted environments.
+8. Perform a Comprehensive STRIDE Threat Model:
+   - Delineate distinct Trust Boundaries (e.g. Public Internet/Cloud, Internal LAN, In-Process Memory, Encrypted Local Storage).
+   - Summarize the Attack Surface across exposed ports (HTTP, WebSockets, MQTT 1883/8883, Matter UDP 5540, config files).
+   - Enumerate concrete Threat Vectors across STRIDE categories: Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege.
+   - For each threat vector, specify: `id` (e.g. `T-01`), `strideCategory`, `targetAsset`, `threatScenario`, `severity` (Critical|High|Medium|Low), `mitigationControl`, and `residualRisk` (Low|Medium|High).
+9. Classify APIs, events, dependencies, environment variables, databases, and observability mechanisms meticulously.
 """;
 
     public const string ExtractionPromptTemplate = """
@@ -260,6 +275,45 @@ Return a single JSON object matching this exact schema:
         "symbol": "string",
         "description": "string",
         "recommendation": "string"
+      }
+    ]
+  },
+  "riskSummary": {
+    "overallRiskLevel": "Critical | High | Moderate | Low",
+    "productionReadiness": "Approved | Conditional | Blocked",
+    "executiveSummary": "string (hard-hitting executive risk summary for restricted environments)",
+    "blastRadiusEvaluation": "string (blast radius and cascade failure analysis)",
+    "restrictedEnvironmentCompliance": "string (assessment against air-gapped/regulated environment constraints)",
+    "topRisks": [
+      {
+        "riskTitle": "string",
+        "riskLevel": "Critical | High | Medium | Low",
+        "impact": "string",
+        "likelihood": "High | Medium | Low",
+        "triggerScenario": "string",
+        "requiredMitigation": "string"
+      }
+    ]
+  },
+  "threatModel": {
+    "methodology": "STRIDE",
+    "attackSurfaceSummary": "string (summary of exposed ports, protocols, and interfaces)",
+    "trustBoundaries": [
+      {
+        "name": "string (e.g. Internet vs LAN, Host OS vs Process, Container Isolation)",
+        "description": "string",
+        "assetsInside": ["string"]
+      }
+    ],
+    "threats": [
+      {
+        "id": "string (e.g. T-01)",
+        "strideCategory": "Spoofing | Tampering | Repudiation | InformationDisclosure | DenialOfService | ElevationOfPrivilege",
+        "targetAsset": "string",
+        "threatScenario": "string",
+        "severity": "Critical | High | Medium | Low",
+        "mitigationControl": "string",
+        "residualRisk": "Low | Medium | High"
       }
     ]
   }

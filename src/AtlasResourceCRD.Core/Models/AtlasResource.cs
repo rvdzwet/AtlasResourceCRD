@@ -91,6 +91,14 @@ public sealed class AtlasResourceSpec
     [YamlMember(Alias = "codeReview", Order = 11)]
     [JsonPropertyName("codeReview")]
     public CodeReviewSpec CodeReview { get; set; } = new();
+
+    [YamlMember(Alias = "riskSummary", Order = 12)]
+    [JsonPropertyName("riskSummary")]
+    public RiskSummarySpec RiskSummary { get; set; } = new();
+
+    [YamlMember(Alias = "threatModel", Order = 13)]
+    [JsonPropertyName("threatModel")]
+    public ThreatModelSpec ThreatModel { get; set; } = new();
 }
 
 public sealed class ComponentOverview
@@ -681,4 +689,123 @@ public sealed class CodeReviewFinding
     [YamlMember(Alias = "recommendation", Order = 7)]
     [JsonPropertyName("recommendation")]
     public string Recommendation { get; set; } = string.Empty;
+}
+
+public sealed class RiskSummarySpec
+{
+    [YamlMember(Alias = "overallRiskLevel", Order = 1)]
+    [JsonPropertyName("overallRiskLevel")]
+    public string OverallRiskLevel { get; set; } = "Moderate"; // Critical, High, Moderate, Low
+
+    [YamlMember(Alias = "productionReadiness", Order = 2)]
+    [JsonPropertyName("productionReadiness")]
+    public string ProductionReadiness { get; set; } = "Conditional"; // Approved, Conditional, Blocked
+
+    [YamlMember(Alias = "executiveSummary", Order = 3)]
+    [JsonPropertyName("executiveSummary")]
+    public string ExecutiveSummary { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "blastRadiusEvaluation", Order = 4)]
+    [JsonPropertyName("blastRadiusEvaluation")]
+    public string BlastRadiusEvaluation { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "restrictedEnvironmentCompliance", Order = 5)]
+    [JsonPropertyName("restrictedEnvironmentCompliance")]
+    public string RestrictedEnvironmentCompliance { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "topRisks", Order = 6)]
+    [JsonPropertyName("topRisks")]
+    public List<TopRiskItem> TopRisks { get; set; } = new();
+}
+
+public sealed class TopRiskItem
+{
+    [YamlMember(Alias = "riskTitle", Order = 1)]
+    [JsonPropertyName("riskTitle")]
+    public string RiskTitle { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "riskLevel", Order = 2)]
+    [JsonPropertyName("riskLevel")]
+    public string RiskLevel { get; set; } = "High"; // Critical, High, Medium, Low
+
+    [YamlMember(Alias = "impact", Order = 3)]
+    [JsonPropertyName("impact")]
+    public string Impact { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "likelihood", Order = 4)]
+    [JsonPropertyName("likelihood")]
+    public string Likelihood { get; set; } = "Medium"; // High, Medium, Low
+
+    [YamlMember(Alias = "triggerScenario", Order = 5)]
+    [JsonPropertyName("triggerScenario")]
+    public string TriggerScenario { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "requiredMitigation", Order = 6)]
+    [JsonPropertyName("requiredMitigation")]
+    public string RequiredMitigation { get; set; } = string.Empty;
+}
+
+public sealed class ThreatModelSpec
+{
+    [YamlMember(Alias = "methodology", Order = 1)]
+    [JsonPropertyName("methodology")]
+    public string Methodology { get; set; } = "STRIDE";
+
+    [YamlMember(Alias = "attackSurfaceSummary", Order = 2)]
+    [JsonPropertyName("attackSurfaceSummary")]
+    public string AttackSurfaceSummary { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "trustBoundaries", Order = 3)]
+    [JsonPropertyName("trustBoundaries")]
+    public List<TrustBoundary> TrustBoundaries { get; set; } = new();
+
+    [YamlMember(Alias = "threats", Order = 4)]
+    [JsonPropertyName("threats")]
+    public List<ThreatVector> Threats { get; set; } = new();
+}
+
+public sealed class TrustBoundary
+{
+    [YamlMember(Alias = "name", Order = 1)]
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "description", Order = 2)]
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "assetsInside", Order = 3)]
+    [JsonPropertyName("assetsInside")]
+    public List<string> AssetsInside { get; set; } = new();
+}
+
+public sealed class ThreatVector
+{
+    [YamlMember(Alias = "id", Order = 1)]
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty; // e.g. T-01, STRIDE-01
+
+    [YamlMember(Alias = "strideCategory", Order = 2)]
+    [JsonPropertyName("strideCategory")]
+    public string StrideCategory { get; set; } = "Tampering"; // Spoofing, Tampering, Repudiation, InformationDisclosure, DenialOfService, ElevationOfPrivilege
+
+    [YamlMember(Alias = "targetAsset", Order = 3)]
+    [JsonPropertyName("targetAsset")]
+    public string TargetAsset { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "threatScenario", Order = 4)]
+    [JsonPropertyName("threatScenario")]
+    public string ThreatScenario { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "severity", Order = 5)]
+    [JsonPropertyName("severity")]
+    public string Severity { get; set; } = "High"; // Critical, High, Medium, Low
+
+    [YamlMember(Alias = "mitigationControl", Order = 6)]
+    [JsonPropertyName("mitigationControl")]
+    public string MitigationControl { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "residualRisk", Order = 7)]
+    [JsonPropertyName("residualRisk")]
+    public string ResidualRisk { get; set; } = "Low"; // Low, Medium, High
 }

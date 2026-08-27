@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Web;
 using AtlasResourceCRD.Core.Models;
 using AtlasResourceCRD.Core.Serialization;
+using AtlasResourceCRD.Core.Validation;
 
 namespace AtlasResourceCRD.Core.Html;
 
@@ -19,6 +20,8 @@ public static class HtmlVisualizerGenerator
         var sec = spec.Security;
         var qual = spec.Quality;
         var cr = spec.CodeReview;
+        var risk = spec.RiskSummary;
+        var tm = spec.ThreatModel;
         var yaml = CrdYamlSerializer.SerializeYaml(resource);
 
         var contextDiagram = SanitizeMermaidDiagram(!string.IsNullOrWhiteSpace(arch.ContextDiagram) ? arch.ContextDiagram : arch.MermaidDiagram);
@@ -31,7 +34,7 @@ public static class HtmlVisualizerGenerator
         sb.AppendLine("<head>");
         sb.AppendLine("  <meta charset=\"UTF-8\">");
         sb.AppendLine("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-        sb.AppendLine($"  <title>{HttpUtility.HtmlEncode(meta.Name)} - Atlas Architecture & Quality</title>");
+        sb.AppendLine($"  <title>{HttpUtility.HtmlEncode(meta.Name)} - Atlas Architecture & Risk Catalog</title>");
         sb.AppendLine("  <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">");
         sb.AppendLine("  <link href=\"https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">");
         sb.AppendLine("  <script src=\"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js\"></script>");
@@ -49,6 +52,17 @@ public static class HtmlVisualizerGenerator
         sb.AppendLine($"        <span class=\"brand-title\">{HttpUtility.HtmlEncode(meta.Name)}</span>");
         sb.AppendLine($"        <span class=\"badge tier-badge\">{HttpUtility.HtmlEncode(spec.ComponentOverview.Tier)}</span>");
         sb.AppendLine($"        <span class=\"badge lang-badge\">{HttpUtility.HtmlEncode(spec.TechStack.PrimaryLanguage)}</span>");
+        if (risk != null && !string.IsNullOrWhiteSpace(risk.OverallRiskLevel))
+        {
+            var riskBadgeClass = risk.OverallRiskLevel.ToLowerInvariant() switch
+            {
+                "critical" => "risk-badge-crit",
+                "high" => "risk-badge-high",
+                "moderate" => "risk-badge-mod",
+                _ => "risk-badge-low"
+            };
+            sb.AppendLine($"        <span class=\"badge {riskBadgeClass}\">🚨 Risk: {HttpUtility.HtmlEncode(risk.OverallRiskLevel)} ({HttpUtility.HtmlEncode(risk.ProductionReadiness)})</span>");
+        }
         if (sec != null && !string.IsNullOrWhiteSpace(sec.OverallRating))
         {
             sb.AppendLine($"        <span class=\"badge sec-badge\">🛡️ OWASP: {HttpUtility.HtmlEncode(sec.OverallRating)}</span>");
@@ -59,7 +73,7 @@ public static class HtmlVisualizerGenerator
         }
         if (cr != null && !string.IsNullOrWhiteSpace(cr.ReviewGrade))
         {
-            sb.AppendLine($"        <span class=\"badge cr-badge\">🔍 Review: {HttpUtility.HtmlEncode(cr.ReviewGrade)} ({cr.ReviewScore}/100)</span>");
+            sb.AppendLine($"        <span class=\"badge cr-badge\">🔍 Review: {HttpUtility.HtmlEncode(cr.ReviewGrade)}</span>");
         }
         sb.AppendLine("      </div>");
         sb.AppendLine("      <div class=\"nav-meta\">");
@@ -94,6 +108,181 @@ public static class HtmlVisualizerGenerator
         }
         sb.AppendLine("      </div>");
         sb.AppendLine("    </section>");
+
+        // 1. Executive Risk & Blast Radius Assessment Card
+        if (risk != null && (!string.IsNullOrWhiteSpace(risk.ExecutiveSummary) || risk.TopRisks.Count > 0))
+        {
+            var readinessClass = risk.ProductionReadiness?.ToLowerInvariant() switch
+            {
+                "approved" => "readiness-approved",
+                "conditional" => "readiness-conditional",
+                "blocked" => "readiness-blocked",
+                _ => "readiness-conditional"
+            };
+            var riskLevelClass = risk.OverallRiskLevel?.ToLowerInvariant() switch
+            {
+                "critical" => "risk-crit",
+                "high" => "risk-high",
+                "moderate" => "risk-mod",
+                _ => "risk-low"
+            };
+
+            sb.AppendLine("    <section class=\"card full-card risk-assessment-card\">");
+            sb.AppendLine("      <div class=\"card-header\">");
+            sb.AppendLine("        <div class=\"header-left\">");
+            sb.AppendLine("          <h2>🚨 Executive Risk & Blast Radius Assessment</h2>");
+            sb.AppendLine($"          <span class=\"readiness-pill {readinessClass}\">Production Readiness: {HttpUtility.HtmlEncode(risk.ProductionReadiness ?? "Conditional")}</span>");
+            sb.AppendLine($"          <span class=\"risk-pill {riskLevelClass}\">Overall Risk: {HttpUtility.HtmlEncode(risk.OverallRiskLevel ?? "Moderate")}</span>");
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+
+            if (!string.IsNullOrWhiteSpace(risk.ExecutiveSummary))
+            {
+                sb.AppendLine($"      <p class=\"risk-exec-summary\">{HttpUtility.HtmlEncode(risk.ExecutiveSummary)}</p>");
+            }
+
+            sb.AppendLine("      <div class=\"grid-2\" style=\"margin-bottom: 1.25rem;\">");
+
+            // Blast Radius Box
+            sb.AppendLine("        <div class=\"blast-radius-box\">");
+            sb.AppendLine("          <h4>💥 Blast Radius & Cascade Containment</h4>");
+            sb.AppendLine($"          <p>{HttpUtility.HtmlEncode(string.IsNullOrWhiteSpace(risk.BlastRadiusEvaluation) ? "Local failure containment evaluated; external cloud outages fall back to local offline caching." : risk.BlastRadiusEvaluation)}</p>");
+            sb.AppendLine("        </div>");
+
+            // Restricted Environment Box
+            sb.AppendLine("        <div class=\"restricted-env-box\">");
+            sb.AppendLine("          <h4>🔒 Restricted & Air-Gapped Environment Compliance</h4>");
+            sb.AppendLine($"          <p>{HttpUtility.HtmlEncode(string.IsNullOrWhiteSpace(risk.RestrictedEnvironmentCompliance) ? "System supports air-gapped execution when cloud integrations are disabled; requires mTLS and key authentication." : risk.RestrictedEnvironmentCompliance)}</p>");
+            sb.AppendLine("        </div>");
+
+            sb.AppendLine("      </div>");
+
+            // Top Risks Table
+            if (risk.TopRisks.Count > 0)
+            {
+                sb.AppendLine("      <div class=\"card-header\" style=\"margin-top: 0.5rem;\">");
+                sb.AppendLine($"        <h3>Key Architectural Risks & Mitigations ({risk.TopRisks.Count})</h3>");
+                sb.AppendLine("      </div>");
+                sb.AppendLine("      <div class=\"table-responsive\">");
+                sb.AppendLine("        <table class=\"data-table\">");
+                sb.AppendLine("          <thead>");
+                sb.AppendLine("            <tr><th>Level</th><th>Risk Title & Impact</th><th>Likelihood</th><th>Trigger Scenario</th><th>Mandatory Mitigation</th></tr>");
+                sb.AppendLine("          </thead>");
+                sb.AppendLine("          <tbody>");
+                foreach (var r in risk.TopRisks)
+                {
+                    var rClass = r.RiskLevel.ToLowerInvariant() switch
+                    {
+                        "critical" => "sev-critical",
+                        "high" => "sev-high",
+                        "medium" => "sev-medium",
+                        _ => "sev-low"
+                    };
+                    sb.AppendLine("            <tr>");
+                    sb.AppendLine($"              <td><span class=\"badge sev-badge {rClass}\">{HttpUtility.HtmlEncode(r.RiskLevel)}</span></td>");
+                    sb.AppendLine($"              <td><strong>{HttpUtility.HtmlEncode(r.RiskTitle)}</strong><br><small style=\"color:var(--text-secondary);\">{HttpUtility.HtmlEncode(r.Impact)}</small></td>");
+                    sb.AppendLine($"              <td><code>{HttpUtility.HtmlEncode(r.Likelihood)}</code></td>");
+                    sb.AppendLine($"              <td><span style=\"font-size:0.8rem; color:#cbd5e1;\">{HttpUtility.HtmlEncode(r.TriggerScenario)}</span></td>");
+                    sb.AppendLine($"              <td style=\"color:#34d399; font-size:0.85rem;\">{HttpUtility.HtmlEncode(r.RequiredMitigation)}</td>");
+                    sb.AppendLine("            </tr>");
+                }
+                sb.AppendLine("          </tbody>");
+                sb.AppendLine("        </table>");
+                sb.AppendLine("      </div>");
+            }
+
+            sb.AppendLine("    </section>");
+        }
+
+        // 2. STRIDE Threat Model Card
+        if (tm != null && (tm.Threats.Count > 0 || tm.TrustBoundaries.Count > 0))
+        {
+            sb.AppendLine("    <section class=\"card full-card threat-model-card\">");
+            sb.AppendLine("      <div class=\"card-header\">");
+            sb.AppendLine("        <div class=\"header-left\">");
+            sb.AppendLine("          <h2>🛡️ STRIDE Threat Model & Attack Surface</h2>");
+            sb.AppendLine($"          <span class=\"badge pattern-badge\">Methodology: {HttpUtility.HtmlEncode(tm.Methodology ?? "STRIDE")}</span>");
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <input type=\"text\" id=\"tmSearch\" class=\"search-input\" placeholder=\"Filter threats (e.g. Spoofing, Tampering, Port)...\" onkeyup=\"filterThreatTable()\">");
+            sb.AppendLine("      </div>");
+
+            if (!string.IsNullOrWhiteSpace(tm.AttackSurfaceSummary))
+            {
+                sb.AppendLine($"      <p class=\"tm-summary\">{HttpUtility.HtmlEncode(tm.AttackSurfaceSummary)}</p>");
+            }
+
+            // Trust Boundaries
+            if (tm.TrustBoundaries.Count > 0)
+            {
+                sb.AppendLine("      <div class=\"trust-boundaries-container\">");
+                sb.AppendLine("        <h4>🌐 Trust Boundaries Identified:</h4>");
+                sb.AppendLine("        <div class=\"tb-grid\">");
+                foreach (var tb in tm.TrustBoundaries)
+                {
+                    sb.AppendLine("          <div class=\"tb-card\">");
+                    sb.AppendLine($"            <strong>{HttpUtility.HtmlEncode(tb.Name)}</strong>");
+                    sb.AppendLine($"            <p>{HttpUtility.HtmlEncode(tb.Description)}</p>");
+                    if (tb.AssetsInside.Count > 0)
+                    {
+                        sb.AppendLine($"            <small>Assets: {string.Join(", ", tb.AssetsInside.Select(a => HttpUtility.HtmlEncode(a)))}</small>");
+                    }
+                    sb.AppendLine("          </div>");
+                }
+                sb.AppendLine("        </div>");
+                sb.AppendLine("      </div>");
+            }
+
+            // Threat Vectors Table
+            if (tm.Threats.Count > 0)
+            {
+                sb.AppendLine("      <div class=\"table-responsive\" style=\"margin-top: 1rem;\">");
+                sb.AppendLine("        <table class=\"data-table\" id=\"threatTable\">");
+                sb.AppendLine("          <thead>");
+                sb.AppendLine("            <tr><th>ID</th><th>STRIDE Category</th><th>Target Asset</th><th>Threat Scenario</th><th>Severity</th><th>Mitigation Control</th><th>Residual</th></tr>");
+                sb.AppendLine("          </thead>");
+                sb.AppendLine("          <tbody>");
+                foreach (var t in tm.Threats)
+                {
+                    var strideClass = t.StrideCategory.ToLowerInvariant() switch
+                    {
+                        "spoofing" => "stride-spoof",
+                        "tampering" => "stride-tamp",
+                        "repudiation" => "stride-rep",
+                        "informationdisclosure" or "information disclosure" => "stride-info",
+                        "denialofservice" or "denial of service" => "stride-dos",
+                        _ => "stride-eop"
+                    };
+                    var sevClass = t.Severity.ToLowerInvariant() switch
+                    {
+                        "critical" => "sev-critical",
+                        "high" => "sev-high",
+                        "medium" => "sev-medium",
+                        _ => "sev-low"
+                    };
+                    var resClass = t.ResidualRisk.ToLowerInvariant() switch
+                    {
+                        "high" => "res-high",
+                        "medium" => "res-med",
+                        _ => "res-low"
+                    };
+
+                    sb.AppendLine("            <tr>");
+                    sb.AppendLine($"              <td><code>{HttpUtility.HtmlEncode(t.Id)}</code></td>");
+                    sb.AppendLine($"              <td><span class=\"stride-badge {strideClass}\">{HttpUtility.HtmlEncode(t.StrideCategory)}</span></td>");
+                    sb.AppendLine($"              <td><strong>{HttpUtility.HtmlEncode(t.TargetAsset)}</strong></td>");
+                    sb.AppendLine($"              <td>{HttpUtility.HtmlEncode(t.ThreatScenario)}</td>");
+                    sb.AppendLine($"              <td><span class=\"badge sev-badge {sevClass}\">{HttpUtility.HtmlEncode(t.Severity)}</span></td>");
+                    sb.AppendLine($"              <td style=\"color:#34d399; font-size:0.85rem;\">{HttpUtility.HtmlEncode(t.MitigationControl)}</td>");
+                    sb.AppendLine($"              <td><span class=\"res-pill {resClass}\">{HttpUtility.HtmlEncode(t.ResidualRisk)}</span></td>");
+                    sb.AppendLine("            </tr>");
+                }
+                sb.AppendLine("          </tbody>");
+                sb.AppendLine("        </table>");
+                sb.AppendLine("      </div>");
+            }
+
+            sb.AppendLine("    </section>");
+        }
 
         // Quality (SIG) & Security (OWASP) Dual Scorecard Grid
         sb.AppendLine("    <div class=\"grid-2\">");
@@ -153,7 +342,6 @@ public static class HtmlVisualizerGenerator
         sb.AppendLine("        </div>");
         if (sec != null)
         {
-            // OWASP Compliance Checklist Pills
             if (sec.OwaspCompliance.Count > 0)
             {
                 sb.AppendLine("        <div class=\"owasp-checks-grid\">");
@@ -180,7 +368,6 @@ public static class HtmlVisualizerGenerator
                 sb.AppendLine("        </div>");
             }
 
-            // Security Findings
             if (sec.Findings.Count > 0)
             {
                 sb.AppendLine("        <div class=\"sec-findings-box\">");
@@ -289,7 +476,6 @@ public static class HtmlVisualizerGenerator
 
             sb.AppendLine("      <div class=\"grid-2\" style=\"margin-bottom: 1.25rem;\">");
 
-            // Strengths
             if (cr.Strengths.Count > 0)
             {
                 sb.AppendLine("        <div class=\"cr-strengths-box\">");
@@ -303,7 +489,6 @@ public static class HtmlVisualizerGenerator
                 sb.AppendLine("        </div>");
             }
 
-            // Code Smells
             if (cr.CodeSmells.Count > 0)
             {
                 sb.AppendLine("        <div class=\"cr-smells-box\">");
@@ -322,7 +507,6 @@ public static class HtmlVisualizerGenerator
 
             sb.AppendLine("      </div>");
 
-            // Findings Table
             if (cr.Findings.Count > 0)
             {
                 sb.AppendLine("      <div class=\"card-header\" style=\"margin-top: 0.5rem;\">");
@@ -559,7 +743,7 @@ public static class HtmlVisualizerGenerator
         sb.AppendLine($"    <p>Generated by <strong>AtlasResourceCRD CLI</strong> • {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</p>");
         sb.AppendLine("  </footer>");
 
-        // Client-Side Scripts (Mermaid, Pan/Zoom, Tabs, Fullscreen)
+        // Client-Side Scripts
         sb.AppendLine("  <script>");
         sb.AppendLine(GetClientJs());
         sb.AppendLine("  </script>");
@@ -571,25 +755,7 @@ public static class HtmlVisualizerGenerator
 
     private static string SanitizeMermaidDiagram(string? diagram)
     {
-        if (string.IsNullOrWhiteSpace(diagram))
-            return "flowchart TD\n  Empty[No Diagram Data]";
-
-        var cleaned = diagram.Trim();
-
-        // 1. Replace raw arrow symbols inside node labels to prevent Mermaid lexer syntax errors
-        cleaned = Regex.Replace(cleaned, @"\[""(.*?)->(.*?)""\]", "[\"$1→$2\"]");
-        cleaned = Regex.Replace(cleaned, @"\[""(.*?)-->(.*?)""\]", "[\"$1→$2\"]");
-
-        // 2. Ensure standard diagram header
-        if (!cleaned.StartsWith("flowchart", StringComparison.OrdinalIgnoreCase) &&
-            !cleaned.StartsWith("graph", StringComparison.OrdinalIgnoreCase) &&
-            !cleaned.StartsWith("sequenceDiagram", StringComparison.OrdinalIgnoreCase) &&
-            !cleaned.StartsWith("C4", StringComparison.OrdinalIgnoreCase))
-        {
-            cleaned = "flowchart TD\n" + cleaned;
-        }
-
-        return cleaned;
+        return MermaidValidator.Sanitize(diagram);
     }
 
     private static string RenderStars(double stars)
@@ -662,7 +828,7 @@ body {
   gap: 1rem;
 }
 
-.brand { display: flex; align-items: center; gap: 0.75rem; }
+.brand { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .logo-icon {
   font-size: 1.5rem;
   background: linear-gradient(135deg, #38bdf8, #818cf8);
@@ -681,6 +847,10 @@ body {
 .sec-badge { background: #10b98125; color: #34d399; border: 1px solid #10b98150; font-weight: 700; }
 .qual-badge { background: #f59e0b25; color: #fbbf24; border: 1px solid #f59e0b50; font-weight: 700; }
 .cr-badge { background: #6366f125; color: #a5b4fc; border: 1px solid #6366f150; font-weight: 700; }
+.risk-badge-crit { background: #dc262625; color: #f87171; border: 1px solid #dc262650; font-weight: 700; }
+.risk-badge-high { background: #ea580c25; color: #fb923c; border: 1px solid #ea580c50; font-weight: 700; }
+.risk-badge-mod { background: #d9770625; color: #fbbf24; border: 1px solid #d9770650; font-weight: 700; }
+.risk-badge-low { background: #10b98125; color: #34d399; border: 1px solid #10b98150; font-weight: 700; }
 .pattern-badge { background: #8b5cf620; color: #c084fc; border: 1px solid #8b5cf640; }
 .crit-badge { background: #f59e0b20; color: #fbbf24; border: 1px solid #f59e0b40; font-size: 0.7rem; }
 .comp-badge { background: #06b6d420; color: #22d3ee; border: 1px solid #06b6d440; font-size: 0.7rem; }
@@ -702,8 +872,47 @@ body {
 
 .card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.75rem; }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem; }
-.header-left { display: flex; align-items: center; gap: 0.75rem; }
+.header-left { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .card-header h2 { font-size: 1.25rem; font-weight: 700; }
+
+/* Risk Assessment Card */
+.readiness-pill { font-size: 0.85rem; font-weight: 800; padding: 0.35rem 0.8rem; border-radius: 9999px; }
+.readiness-approved { background: #065f4630; color: #34d399; border: 1px solid #065f46; }
+.readiness-conditional { background: #854d0e30; color: #fde047; border: 1px solid #854d0e; }
+.readiness-blocked { background: #991b1b30; color: #f87171; border: 1px solid #991b1b; }
+.risk-pill { font-size: 0.85rem; font-weight: 800; padding: 0.35rem 0.8rem; border-radius: 9999px; }
+.risk-crit { background: #dc262625; color: #f87171; border: 1px solid #dc262650; }
+.risk-high { background: #ea580c25; color: #fb923c; border: 1px solid #ea580c50; }
+.risk-mod { background: #d9770625; color: #fbbf24; border: 1px solid #d9770650; }
+.risk-low { background: #10b98125; color: #34d399; border: 1px solid #10b98150; }
+.risk-exec-summary { color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 1.25rem; border-left: 3px solid #f59e0b; padding-left: 0.75rem; }
+.blast-radius-box { background: #7f1d1d20; border: 1px solid #991b1b; border-radius: 10px; padding: 1rem; }
+.blast-radius-box h4 { color: #f87171; margin-bottom: 0.4rem; font-size: 0.9rem; }
+.blast-radius-box p { color: #fca5a5; font-size: 0.85rem; }
+.restricted-env-box { background: #1e1b4b; border: 1px solid #4338ca; border-radius: 10px; padding: 1rem; }
+.restricted-env-box h4 { color: #a5b4fc; margin-bottom: 0.4rem; font-size: 0.9rem; }
+.restricted-env-box p { color: #cbd5e1; font-size: 0.85rem; }
+
+/* Threat Model Card */
+.tm-summary { color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 1rem; }
+.trust-boundaries-container { background: #0f172a; border: 1px solid var(--border-color); border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
+.trust-boundaries-container h4 { color: var(--accent-blue); margin-bottom: 0.6rem; font-size: 0.9rem; }
+.tb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.75rem; }
+.tb-card { background: #1e293b; padding: 0.6rem 0.8rem; border-radius: 6px; border: 1px solid var(--border-color); }
+.tb-card strong { color: #38bdf8; font-size: 0.85rem; }
+.tb-card p { font-size: 0.8rem; color: var(--text-secondary); margin: 0.2rem 0; }
+.tb-card small { color: #94a3b8; font-size: 0.75rem; }
+.stride-badge { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; }
+.stride-spoof { background: #6366f125; color: #a5b4fc; border: 1px solid #6366f150; }
+.stride-tamp { background: #ef444425; color: #f87171; border: 1px solid #ef444450; }
+.stride-rep { background: #f59e0b25; color: #fbbf24; border: 1px solid #f59e0b50; }
+.stride-info { background: #06b6d425; color: #67e8f9; border: 1px solid #06b6d450; }
+.stride-dos { background: #dc262625; color: #fca5a5; border: 1px solid #dc262650; }
+.stride-eop { background: #a855f725; color: #d8b4fe; border: 1px solid #a855f750; }
+.res-pill { font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; }
+.res-low { background: #065f4630; color: #34d399; }
+.res-med { background: #854d0e30; color: #fde047; }
+.res-high { background: #991b1b30; color: #f87171; }
 
 /* Quality Card */
 .stars-rating { font-size: 1.15rem; color: #fbbf24; display: flex; align-items: center; gap: 0.4rem; }
@@ -1045,6 +1254,16 @@ function filterApiTable() {
 function filterCrTable() {
   var input = document.getElementById('crSearch').value.toUpperCase();
   var trs = document.getElementById('crTable').getElementsByTagName('tr');
+  for (var i = 1; i < trs.length; i++) {
+    var text = trs[i].textContent || trs[i].innerText;
+    trs[i].style.display = text.toUpperCase().indexOf(input) > -1 ? '' : 'none';
+  }
+}
+
+// Search Threat Model table
+function filterThreatTable() {
+  var input = document.getElementById('tmSearch').value.toUpperCase();
+  var trs = document.getElementById('threatTable').getElementsByTagName('tr');
   for (var i = 1; i < trs.length; i++) {
     var text = trs[i].textContent || trs[i].innerText;
     trs[i].style.display = text.toUpperCase().indexOf(input) > -1 ? '' : 'none';

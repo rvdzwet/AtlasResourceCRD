@@ -130,6 +130,17 @@ public static class CrdValidator
                     result.Warnings.Add($"CodeReviewScore '{resource.Spec.CodeReview.ReviewScore}' should be between 0 and 100.");
                 }
             }
+
+            // Risk Summary Validation
+            if (resource.Spec.RiskSummary != null)
+            {
+                var readiness = resource.Spec.RiskSummary.ProductionReadiness?.ToLowerInvariant();
+                if (!string.IsNullOrWhiteSpace(readiness) &&
+                    readiness != "approved" && readiness != "conditional" && readiness != "blocked")
+                {
+                    result.Warnings.Add($"ProductionReadiness '{resource.Spec.RiskSummary.ProductionReadiness}' should be Approved, Conditional, or Blocked.");
+                }
+            }
         }
 
         return result;

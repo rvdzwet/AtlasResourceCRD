@@ -149,4 +149,77 @@ public class SecurityAndQualityTests
         html.Should().Contain("DeviceController.cs");
         html.Should().Contain("Extract Parameter Object");
     }
+
+    [Fact]
+    public void Generate_ShouldRenderExecutiveRiskAndThreatModelSections()
+    {
+        var resource = new AtlasResource
+        {
+            ApiVersion = "atlas.io/v1alpha1",
+            Kind = "AtlasResource",
+            Metadata = new AtlasResourceMetadata { Name = "restricted-service" },
+            Spec = new AtlasResourceSpec
+            {
+                ComponentOverview = new ComponentOverview { Name = "restricted-service", Tier = "Backend" },
+                Architecture = new ArchitectureSpec { ComponentDiagram = "flowchart TD\n  A --> B" },
+                RiskSummary = new RiskSummarySpec
+                {
+                    OverallRiskLevel = "High",
+                    ProductionReadiness = "Conditional",
+                    ExecutiveSummary = "Restricted environment deployment requires air-gap network isolation and mTLS enforcement.",
+                    BlastRadiusEvaluation = "Process crash isolated to IoT daemon; database remains protected via WAL journal mode.",
+                    RestrictedEnvironmentCompliance = "Complies with zero-trust local network rules; external cloud telemetry disabled.",
+                    TopRisks = new List<TopRiskItem>
+                    {
+                        new()
+                        {
+                            RiskTitle = "Unauthenticated Local MQTT Broker",
+                            RiskLevel = "High",
+                            Impact = "Unauthorized command injection on local subnet.",
+                            Likelihood = "Medium",
+                            TriggerScenario = "Attacker on same VLAN connects to port 1883.",
+                            RequiredMitigation = "Enforce mTLS certificate validation and user ACLs on MQTT broker."
+                        }
+                    }
+                },
+                ThreatModel = new ThreatModelSpec
+                {
+                    Methodology = "STRIDE",
+                    AttackSurfaceSummary = "Exposed ports include HTTP 5000 and MQTT 8883 across LAN boundary.",
+                    TrustBoundaries = new List<TrustBoundary>
+                    {
+                        new()
+                        {
+                            Name = "LAN vs In-Process Memory",
+                            Description = "Separates external subnet from local daemon memory.",
+                            AssetsInside = new List<string> { "In-Memory Device State", "Encryption Keys" }
+                        }
+                    },
+                    Threats = new List<ThreatVector>
+                    {
+                        new()
+                        {
+                            Id = "T-01",
+                            StrideCategory = "Tampering",
+                            TargetAsset = "Device Telemetry Stream",
+                            ThreatScenario = "Packet modification in transit without TLS.",
+                            Severity = "High",
+                            MitigationControl = "Mandate TLS 1.3 encryption on all telemetry sockets.",
+                            ResidualRisk = "Low"
+                        }
+                    }
+                }
+            }
+        };
+
+        var html = HtmlVisualizerGenerator.Generate(resource);
+        html.Should().Contain("Executive Risk & Blast Radius Assessment");
+        html.Should().Contain("Production Readiness: Conditional");
+        html.Should().Contain("Overall Risk: High");
+        html.Should().Contain("Unauthenticated Local MQTT Broker");
+        html.Should().Contain("STRIDE Threat Model & Attack Surface");
+        html.Should().Contain("LAN vs In-Process Memory");
+        html.Should().Contain("Device Telemetry Stream");
+        html.Should().Contain("Mandate TLS 1.3 encryption");
+    }
 }
