@@ -31,15 +31,16 @@
   - **1-Click High-Res Export**: Instant download of rendered diagrams to vector **SVG** and **PNG** for design reviews and Confluence.
   - **Node Spotlight on Hover**: Dims unrelated nodes to clearly trace connected communication links and protocols.
   - **`contextDiagram` (C4 Level 1)**, **`componentDiagram` (C4 Level 2/3)**, and **`dataFlowDiagram` (Lifecycle)**.
-- ⚡ **High-Throughput Parallelism & Multi-Tier Git Caching**:
-  - Parallel Map Phase scaling up to **16 concurrent workers** by default for lightning-fast analysis of large codebases.
-  - Git Blob SHA file caching + Synthesis & Artifact Caching for **<50ms instant cache hits**.
-- 🚨 **Executive Risk & Blast Radius Assessment**:
+- ⚡ **High-Throughput Parallelism & Strict Sequential Output Pipeline**:
+  - Parallel Map Phase scaling up to **16 concurrent workers** for fast file analysis.
+  - **Strict 2-Step Sequential Pipeline**: Guarantees `atlas.yaml` is written and flushed to disk first, then deserialized sequentially to generate `atlas.html` with 100% deterministic parity.
+  - Multi-Tier Git Blob SHA caching + Synthesis Artifact Caching for **<50ms instant cache hits**.
+- 🚨 **Exhaustive Executive Risk Assessment & Blast Radius**:
   - Uncompromising, critical principal auditor persona designed specifically for **high-security, air-gapped, and regulated environments**.
   - **Production Readiness Verdict**: 🟢 `Approved`, 🟡 `Conditional`, or 🔴 `Blocked`.
   - **Blast Radius & Cascade Containment**: Evaluation of catastrophic failure scenarios, dependency downtime, and crash isolation.
   - **Restricted Environment & Air-Gap Compliance**: Validates offline operation, credential zero-trust, and boundary isolation.
-  - **Top Risks Matrix**: Prioritized matrix mapping risk levels, impacts, trigger scenarios, and required mitigations.
+  - **Exhaustive Architectural Risk Register**: Complete catalog of all discovered risks mapping risk levels, impacts, trigger scenarios, and required mitigations.
 - 🛡️ **STRIDE Threat Model & Attack Surface Mapping**:
   - Delineates **Trust Boundaries** (e.g. Public Internet/Cloud vs Local LAN vs In-Process Memory vs Encrypted Storage).
   - Evaluates Attack Surface across exposed ports (HTTP, WebSockets, MQTT 1883/8883, Matter UDP 5540, config files).

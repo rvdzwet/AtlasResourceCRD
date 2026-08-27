@@ -169,7 +169,7 @@ public class SecurityAndQualityTests
                     ExecutiveSummary = "Restricted environment deployment requires air-gap network isolation and mTLS enforcement.",
                     BlastRadiusEvaluation = "Process crash isolated to IoT daemon; database remains protected via WAL journal mode.",
                     RestrictedEnvironmentCompliance = "Complies with zero-trust local network rules; external cloud telemetry disabled.",
-                    TopRisks = new List<TopRiskItem>
+                    Risks = new List<RiskItem>
                     {
                         new()
                         {

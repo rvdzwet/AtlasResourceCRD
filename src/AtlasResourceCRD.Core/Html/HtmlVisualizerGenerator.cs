@@ -115,7 +115,7 @@ public static class HtmlVisualizerGenerator
         sb.AppendLine("    </section>");
 
         // 1. Executive Risk & Blast Radius Assessment Card
-        if (risk != null && (!string.IsNullOrWhiteSpace(risk.ExecutiveSummary) || risk.TopRisks.Count > 0))
+        if (risk != null && (!string.IsNullOrWhiteSpace(risk.ExecutiveSummary) || risk.Risks.Count > 0))
         {
             var readinessClass = risk.ProductionReadiness?.ToLowerInvariant() switch
             {
@@ -162,11 +162,11 @@ public static class HtmlVisualizerGenerator
 
             sb.AppendLine("      </div>");
 
-            // Top Risks Table
-            if (risk.TopRisks.Count > 0)
+            // Risks Register Table
+            if (risk.Risks.Count > 0)
             {
                 sb.AppendLine("      <div class=\"card-header\" style=\"margin-top: 0.5rem;\">");
-                sb.AppendLine($"        <h3>Key Architectural Risks & Mitigations ({risk.TopRisks.Count})</h3>");
+                sb.AppendLine($"        <h3>Architectural Risk Register ({risk.Risks.Count} Exhaustive Items)</h3>");
                 sb.AppendLine("      </div>");
                 sb.AppendLine("      <div class=\"table-responsive\">");
                 sb.AppendLine("        <table class=\"data-table\">");
@@ -174,7 +174,7 @@ public static class HtmlVisualizerGenerator
                 sb.AppendLine("            <tr><th>Level</th><th>Risk Title & Impact</th><th>Likelihood</th><th>Trigger Scenario</th><th>Mandatory Mitigation</th></tr>");
                 sb.AppendLine("          </thead>");
                 sb.AppendLine("          <tbody>");
-                foreach (var r in risk.TopRisks)
+                foreach (var r in risk.Risks)
                 {
                     var rClass = r.RiskLevel.ToLowerInvariant() switch
                     {

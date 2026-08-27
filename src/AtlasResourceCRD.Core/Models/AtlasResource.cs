@@ -717,12 +717,12 @@ public sealed class RiskSummarySpec
     [JsonPropertyName("restrictedEnvironmentCompliance")]
     public string RestrictedEnvironmentCompliance { get; set; } = string.Empty;
 
-    [YamlMember(Alias = "topRisks", Order = 6)]
-    [JsonPropertyName("topRisks")]
-    public List<TopRiskItem> TopRisks { get; set; } = new();
+    [YamlMember(Alias = "risks", Order = 6)]
+    [JsonPropertyName("risks")]
+    public List<RiskItem> Risks { get; set; } = new();
 }
 
-public sealed class TopRiskItem
+public class RiskItem
 {
     [YamlMember(Alias = "riskTitle", Order = 1)]
     [JsonPropertyName("riskTitle")]
@@ -748,6 +748,9 @@ public sealed class TopRiskItem
     [JsonPropertyName("requiredMitigation")]
     public string RequiredMitigation { get; set; } = string.Empty;
 }
+
+// Backward-compatibility alias
+public sealed class TopRiskItem : RiskItem { }
 
 public sealed class ThreatModelSpec
 {

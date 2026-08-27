@@ -166,7 +166,7 @@ public static class Program
         }
 
         logger.LogInformation("================================================================================");
-        logger.LogInformation("AtlasResourceCRD Scanner CLI v1.3.0 (Target: {Path})", fullPath);
+        logger.LogInformation("AtlasResourceCRD Scanner CLI v1.4.0 (Target: {Path})", fullPath);
         logger.LogInformation("Gemini Model: {Model} | Thinking: {Thinking} | Concurrency: {Concurrency}",
             model, thinkingLevel, concurrency);
         logger.LogInformation("================================================================================");
@@ -215,16 +215,20 @@ public static class Program
             logger.LogWarning("Validation notice: {Warning}", warning);
         }
 
-        // 4. Output Generation: Always write atlas.yaml and atlas.html
+        // 4. Output Generation: Strict 2-Step Sequential Pipeline
+        // Step 1: Serialize and write atlas.yaml to disk
         var yamlOutput = CrdYamlSerializer.SerializeYaml(crd);
         var defaultYamlPath = string.IsNullOrWhiteSpace(outputFile) ? Path.Combine(Directory.GetCurrentDirectory(), "atlas.yaml") : Path.GetFullPath(outputFile);
         var htmlOutputPath = Path.ChangeExtension(defaultYamlPath, ".html");
 
         File.WriteAllText(defaultYamlPath, yamlOutput);
-        logger.LogInformation("CRD manifest written to: {YamlPath}", defaultYamlPath);
+        logger.LogInformation("[Step 1/2] CRD manifest persisted to disk: {YamlPath}", defaultYamlPath);
 
-        HtmlVisualizerGenerator.GenerateToFile(crd, htmlOutputPath);
-        logger.LogInformation("Interactive HTML dashboard generated: {HtmlPath}", htmlOutputPath);
+        // Step 2: Sequentially read the written manifest from disk to render atlas.html
+        var persistedYaml = File.ReadAllText(defaultYamlPath);
+        var persistedCrd = CrdYamlSerializer.DeserializeYaml(persistedYaml);
+        HtmlVisualizerGenerator.GenerateToFile(persistedCrd, htmlOutputPath);
+        logger.LogInformation("[Step 2/2] Interactive HTML dashboard rendered sequentially from {YamlPath}: {HtmlPath}", defaultYamlPath, htmlOutputPath);
 
         logger.LogInformation("================================================================================");
         logger.LogInformation("AtlasResourceCRD scan complete! [Component: {Name}, Tier: {Tier}]",

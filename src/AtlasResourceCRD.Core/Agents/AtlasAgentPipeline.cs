@@ -528,7 +528,7 @@ public sealed class AtlasAgentPipeline
             manifestsSb.AppendLine($"- {m.ManifestType} at `{m.RelativePath}` (Runtime: {m.TargetRuntime ?? "N/A"})");
             if (m.ExtractedPackages.Count > 0)
             {
-                manifestsSb.AppendLine($"  Packages: {string.Join(", ", m.ExtractedPackages.Take(25).Select(p => $"{p.Name} {p.Version}".Trim()))}");
+                manifestsSb.AppendLine($"  Packages: {string.Join(", ", m.ExtractedPackages.Select(p => $"{p.Name} {p.Version}".Trim()))}");
             }
             if (m.ExposedPorts.Count > 0)
             {
@@ -557,7 +557,7 @@ public sealed class AtlasAgentPipeline
         }
 
         var readmeSnippet = !string.IsNullOrWhiteSpace(skeleton.ReadmeContent)
-            ? (skeleton.ReadmeContent.Length > 3500 ? skeleton.ReadmeContent.Substring(0, 3500) + "\n...[truncated]..." : skeleton.ReadmeContent)
+            ? (skeleton.ReadmeContent.Length > 15000 ? skeleton.ReadmeContent.Substring(0, 15000) + "\n...[truncated]..." : skeleton.ReadmeContent)
             : "(No README.md found)";
 
         return Prompts.ExtractionPromptTemplate
