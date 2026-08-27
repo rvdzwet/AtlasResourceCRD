@@ -20,7 +20,7 @@ namespace AtlasResourceCRD.Core.Agents;
 
 public sealed class AtlasAgentPipelineOptions
 {
-    public int Concurrency { get; set; } = 8;
+    public int Concurrency { get; set; } = 16;
     public bool DisableCache { get; set; }
     public bool ForceSynth { get; set; }
     public string? CustomCacheDir { get; set; }

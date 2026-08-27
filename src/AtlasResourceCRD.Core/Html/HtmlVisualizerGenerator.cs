@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
 using AtlasResourceCRD.Core.Models;
@@ -22,11 +23,15 @@ public static class HtmlVisualizerGenerator
         var cr = spec.CodeReview;
         var risk = spec.RiskSummary;
         var tm = spec.ThreatModel;
+        var fn = spec.FunctionalSpecs;
         var yaml = CrdYamlSerializer.SerializeYaml(resource);
 
         var contextDiagram = SanitizeMermaidDiagram(!string.IsNullOrWhiteSpace(arch.ContextDiagram) ? arch.ContextDiagram : arch.MermaidDiagram);
         var componentDiagram = SanitizeMermaidDiagram(!string.IsNullOrWhiteSpace(arch.ComponentDiagram) ? arch.ComponentDiagram : arch.MermaidDiagram);
         var dataFlowDiagram = SanitizeMermaidDiagram(!string.IsNullOrWhiteSpace(arch.DataFlowDiagram) ? arch.DataFlowDiagram : arch.MermaidDiagram);
+
+        // Prepare JSON payload for 360-degree interactive architectural repository drilldown
+        var catalogJson = CrdYamlSerializer.SerializeJson(resource);
 
         var sb = new StringBuilder();
         sb.AppendLine("<!DOCTYPE html>");
@@ -34,7 +39,7 @@ public static class HtmlVisualizerGenerator
         sb.AppendLine("<head>");
         sb.AppendLine("  <meta charset=\"UTF-8\">");
         sb.AppendLine("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-        sb.AppendLine($"  <title>{HttpUtility.HtmlEncode(meta.Name)} - Atlas Architecture & Risk Catalog</title>");
+        sb.AppendLine($"  <title>{HttpUtility.HtmlEncode(meta.Name)} - Atlas Architecture & Living Catalog</title>");
         sb.AppendLine("  <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">");
         sb.AppendLine("  <link href=\"https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">");
         sb.AppendLine("  <script src=\"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js\"></script>");
@@ -284,6 +289,191 @@ public static class HtmlVisualizerGenerator
             sb.AppendLine("    </section>");
         }
 
+        // 3. Interactive Multi-Diagram Suite Card with C4 Model Palette & Export Tools
+        sb.AppendLine("    <section class=\"card full-card arch-card\" id=\"diagramSection\">");
+        sb.AppendLine("      <div class=\"card-header\">");
+        sb.AppendLine("        <div class=\"header-left\">");
+        sb.AppendLine("          <h2>🏛️ Interactive Architecture Suite</h2>");
+        sb.AppendLine($"          <span class=\"badge pattern-badge\">{HttpUtility.HtmlEncode(spec.Architecture.Pattern)}</span>");
+        sb.AppendLine("        </div>");
+        sb.AppendLine("        <div class=\"diagram-tabs\">");
+        sb.AppendLine("          <button class=\"d-tab active\" onclick=\"switchDiagram('component', this)\">🧩 Component & Protocol Architecture</button>");
+        sb.AppendLine("          <button class=\"d-tab\" onclick=\"switchDiagram('context', this)\">🏛️ C4 System Context</button>");
+        sb.AppendLine("          <button class=\"d-tab\" onclick=\"switchDiagram('dataflow', this)\">⚡ Data & Event Flow</button>");
+        sb.AppendLine("        </div>");
+        sb.AppendLine("        <div class=\"diagram-controls\">");
+        sb.AppendLine("          <button class=\"ctrl-btn\" onclick=\"zoomDiagram(1.2)\" title=\"Zoom In\">➕</button>");
+        sb.AppendLine("          <button class=\"ctrl-btn\" onclick=\"zoomDiagram(0.8)\" title=\"Zoom Out\">➖</button>");
+        sb.AppendLine("          <button class=\"ctrl-btn\" onclick=\"resetZoom()\" title=\"Reset Fit\">⛶ Reset</button>");
+        sb.AppendLine("          <button class=\"ctrl-btn\" onclick=\"exportDiagramSvg()\" title=\"Export Vector SVG\">💾 SVG</button>");
+        sb.AppendLine("          <button class=\"ctrl-btn\" onclick=\"exportDiagramPng()\" title=\"Export PNG Image\">📷 PNG</button>");
+        sb.AppendLine("          <button class=\"ctrl-btn fullscreen-btn\" onclick=\"toggleFullscreen()\" title=\"Enlarge / Fullscreen\">⤢ Enlarge</button>");
+        sb.AppendLine("        </div>");
+        sb.AppendLine("      </div>");
+
+        sb.AppendLine($"      <p class=\"arch-summary\">{HttpUtility.HtmlEncode(spec.Architecture.Summary)}</p>");
+
+        // C4 Official Color Legend Bar
+        sb.AppendLine("      <div class=\"c4-legend-bar\">");
+        sb.AppendLine("        <span class=\"legend-title\">C4 Model Legend:</span>");
+        sb.AppendLine("        <span class=\"legend-item c4-person\"><span class=\"legend-swatch\"></span> 👤 Person / User</span>");
+        sb.AppendLine("        <span class=\"legend-item c4-system\"><span class=\"legend-swatch\"></span> 🏢 Software System</span>");
+        sb.AppendLine("        <span class=\"legend-item c4-container\"><span class=\"legend-swatch\"></span> 📦 Container / Gateway</span>");
+        sb.AppendLine("        <span class=\"legend-item c4-component\"><span class=\"legend-swatch\"></span> 🧩 Component / Service</span>");
+        sb.AppendLine("        <span class=\"legend-item c4-external\"><span class=\"legend-swatch\"></span> 🌐 External System / Hardware</span>");
+        sb.AppendLine("        <span class=\"legend-item c4-db\"><span class=\"legend-swatch\"></span> 🗄️ Database / Store</span>");
+        sb.AppendLine("        <span class=\"legend-hint\">💡 Click any diagram node to open the 360° Architecture Inspector</span>");
+        sb.AppendLine("      </div>");
+
+        // Pan-Zoom Diagram Viewport
+        sb.AppendLine("      <div class=\"diagram-viewport-container\" id=\"diagramViewportContainer\">");
+        sb.AppendLine("        <div class=\"diagram-viewport\" id=\"diagramViewport\">");
+
+        // Diagram 1: Component Diagram
+        sb.AppendLine("          <div id=\"diag-component\" class=\"diagram-pane active\">");
+        sb.AppendLine("            <pre class=\"mermaid\">");
+        sb.AppendLine(HttpUtility.HtmlEncode(componentDiagram));
+        sb.AppendLine("            </pre>");
+        sb.AppendLine("          </div>");
+
+        // Diagram 2: Context Diagram
+        sb.AppendLine("          <div id=\"diag-context\" class=\"diagram-pane\">");
+        sb.AppendLine("            <pre class=\"mermaid\">");
+        sb.AppendLine(HttpUtility.HtmlEncode(contextDiagram));
+        sb.AppendLine("            </pre>");
+        sb.AppendLine("          </div>");
+
+        // Diagram 3: Data Flow Diagram
+        sb.AppendLine("          <div id=\"diag-dataflow\" class=\"diagram-pane\">");
+        sb.AppendLine("            <pre class=\"mermaid\">");
+        sb.AppendLine(HttpUtility.HtmlEncode(dataFlowDiagram));
+        sb.AppendLine("            </pre>");
+        sb.AppendLine("          </div>");
+
+        sb.AppendLine("        </div>");
+        sb.AppendLine("      </div>");
+        sb.AppendLine("    </section>");
+
+        // 4. Living Documentation & Functional Specifications Accordion Card
+        if (fn != null && (fn.UseCases.Count > 0 || fn.Capabilities.Count > 0))
+        {
+            sb.AppendLine("    <section class=\"card full-card living-doc-card\" id=\"livingDocsSection\">");
+            sb.AppendLine("      <div class=\"card-header\">");
+            sb.AppendLine("        <div class=\"header-left\">");
+            sb.AppendLine("          <h2>📖 Living Documentation & Functional Specifications</h2>");
+            sb.AppendLine($"          <span class=\"badge qual-badge\">{fn.UseCases.Count} Business Use-Cases</span>");
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <input type=\"text\" id=\"ucSearch\" class=\"search-input\" placeholder=\"Filter use-cases (e.g. Actor, Climate, Solar, MQTT)...\" onkeyup=\"filterUseCases()\">");
+            sb.AppendLine("      </div>");
+
+            // Capabilities Cloud
+            if (fn.Capabilities.Count > 0)
+            {
+                sb.AppendLine("      <div class=\"capabilities-grid\">");
+                foreach (var cap in fn.Capabilities)
+                {
+                    sb.AppendLine("        <div class=\"cap-pill-card\">");
+                    sb.AppendLine($"          <h4>✨ {HttpUtility.HtmlEncode(cap.Name)}</h4>");
+                    sb.AppendLine($"          <p>{HttpUtility.HtmlEncode(cap.Description)}</p>");
+                    if (!string.IsNullOrWhiteSpace(cap.BusinessOutcome))
+                    {
+                        sb.AppendLine($"          <small><strong>Outcome:</strong> {HttpUtility.HtmlEncode(cap.BusinessOutcome)}</small>");
+                    }
+                    sb.AppendLine("        </div>");
+                }
+                sb.AppendLine("      </div>");
+            }
+
+            // Use Case Accordions
+            sb.AppendLine("      <div class=\"use-case-accordion-container\" id=\"useCaseContainer\">");
+            foreach (var uc in fn.UseCases)
+            {
+                sb.AppendLine("        <div class=\"uc-card\" data-actor=\"" + HttpUtility.HtmlEncode(uc.PrimaryActor) + "\" data-title=\"" + HttpUtility.HtmlEncode(uc.Title) + "\">");
+                sb.AppendLine("          <div class=\"uc-header\" onclick=\"toggleUseCase(this)\">");
+                sb.AppendLine("            <div class=\"uc-header-left\">");
+                sb.AppendLine($"              <span class=\"uc-id-badge\">{HttpUtility.HtmlEncode(uc.Id)}</span>");
+                sb.AppendLine($"              <strong class=\"uc-title\">{HttpUtility.HtmlEncode(uc.Title)}</strong>");
+                sb.AppendLine($"              <span class=\"badge tier-badge\">Actor: {HttpUtility.HtmlEncode(uc.PrimaryActor)}</span>");
+                if (!string.IsNullOrWhiteSpace(uc.Capability))
+                {
+                    sb.AppendLine($"              <span class=\"badge pattern-badge\">{HttpUtility.HtmlEncode(uc.Capability)}</span>");
+                }
+                sb.AppendLine("            </div>");
+                sb.AppendLine("            <span class=\"accordion-icon\">▼</span>");
+                sb.AppendLine("          </div>");
+                sb.AppendLine("          <div class=\"uc-body\">");
+                if (!string.IsNullOrWhiteSpace(uc.BusinessValue))
+                {
+                    sb.AppendLine($"            <div class=\"uc-callout\"><strong>Business Value:</strong> {HttpUtility.HtmlEncode(uc.BusinessValue)}</div>");
+                }
+                if (!string.IsNullOrWhiteSpace(uc.Trigger))
+                {
+                    sb.AppendLine($"            <p class=\"uc-field\"><strong>⚡ Trigger:</strong> {HttpUtility.HtmlEncode(uc.Trigger)}</p>");
+                }
+                if (uc.Preconditions.Count > 0)
+                {
+                    sb.AppendLine("            <div class=\"uc-section-block\">");
+                    sb.AppendLine("              <strong>Prerequisites & Preconditions:</strong>");
+                    sb.AppendLine("              <ul>");
+                    foreach (var pre in uc.Preconditions) sb.AppendLine($"                <li>• {HttpUtility.HtmlEncode(pre)}</li>");
+                    sb.AppendLine("              </ul>");
+                    sb.AppendLine("            </div>");
+                }
+                if (uc.MainFlow.Count > 0)
+                {
+                    sb.AppendLine("            <div class=\"uc-section-block\">");
+                    sb.AppendLine("              <strong>Execution Workflow / Main Flow:</strong>");
+                    sb.AppendLine("              <ol class=\"uc-flow-list\">");
+                    foreach (var step in uc.MainFlow) sb.AppendLine($"                <li>{HttpUtility.HtmlEncode(step)}</li>");
+                    sb.AppendLine("              </ol>");
+                    sb.AppendLine("            </div>");
+                }
+                if (uc.BusinessRules.Count > 0)
+                {
+                    sb.AppendLine("            <div class=\"uc-section-block\">");
+                    sb.AppendLine("              <strong>Business Invariants & Policies:</strong>");
+                    sb.AppendLine("              <div class=\"rules-tag-list\">");
+                    foreach (var r in uc.BusinessRules) sb.AppendLine($"                <span class=\"rule-tag\">📏 {HttpUtility.HtmlEncode(r)}</span>");
+                    sb.AppendLine("              </div>");
+                    sb.AppendLine("            </div>");
+                }
+                if (uc.AcceptanceScenarios.Count > 0)
+                {
+                    sb.AppendLine("            <div class=\"uc-section-block\">");
+                    sb.AppendLine("              <strong>Acceptance Criteria (BDD Given-When-Then):</strong>");
+                    sb.AppendLine("              <div class=\"bdd-list\">");
+                    foreach (var bdd in uc.AcceptanceScenarios)
+                    {
+                        sb.AppendLine("                <div class=\"bdd-card\">");
+                        sb.AppendLine($"                  <h5>🧪 Scenario: {HttpUtility.HtmlEncode(bdd.ScenarioTitle)}</h5>");
+                        sb.AppendLine($"                  <p class=\"bdd-line\"><span class=\"bdd-kw\">Given</span> {HttpUtility.HtmlEncode(bdd.Given)}</p>");
+                        sb.AppendLine($"                  <p class=\"bdd-line\"><span class=\"bdd-kw\">When</span> {HttpUtility.HtmlEncode(bdd.When)}</p>");
+                        sb.AppendLine($"                  <p class=\"bdd-line\"><span class=\"bdd-kw\">Then</span> {HttpUtility.HtmlEncode(bdd.Then)}</p>");
+                        sb.AppendLine("                </div>");
+                    }
+                    sb.AppendLine("              </div>");
+                    sb.AppendLine("            </div>");
+                }
+                if (uc.AssociatedComponents.Count > 0 || uc.AssociatedApis.Count > 0)
+                {
+                    sb.AppendLine("            <div class=\"uc-footer-links\">");
+                    if (uc.AssociatedComponents.Count > 0)
+                    {
+                        sb.AppendLine($"              <span><strong>Components:</strong> {string.Join(", ", uc.AssociatedComponents.Select(c => $"<a href=\"javascript:void(0)\" onclick=\"inspectComponent('{HttpUtility.HtmlEncode(c)}')\">{HttpUtility.HtmlEncode(c)}</a>"))}</span>");
+                    }
+                    if (uc.AssociatedApis.Count > 0)
+                    {
+                        sb.AppendLine($"              <span><strong>APIs:</strong> {string.Join(", ", uc.AssociatedApis.Select(a => $"<code>{HttpUtility.HtmlEncode(a)}</code>"))}</span>");
+                    }
+                    sb.AppendLine("            </div>");
+                }
+                sb.AppendLine("          </div>");
+                sb.AppendLine("        </div>");
+            }
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </section>");
+        }
+
         // Quality (SIG) & Security (OWASP) Dual Scorecard Grid
         sb.AppendLine("    <div class=\"grid-2\">");
 
@@ -405,57 +595,6 @@ public static class HtmlVisualizerGenerator
         sb.AppendLine("      </section>");
 
         sb.AppendLine("    </div>");
-
-        // Interactive Multi-Diagram Suite Card
-        sb.AppendLine("    <section class=\"card full-card arch-card\" id=\"diagramSection\">");
-        sb.AppendLine("      <div class=\"card-header\">");
-        sb.AppendLine("        <div class=\"header-left\">");
-        sb.AppendLine("          <h2>🏛️ Interactive Architecture Suite</h2>");
-        sb.AppendLine($"          <span class=\"badge pattern-badge\">{HttpUtility.HtmlEncode(spec.Architecture.Pattern)}</span>");
-        sb.AppendLine("        </div>");
-        sb.AppendLine("        <div class=\"diagram-tabs\">");
-        sb.AppendLine("          <button class=\"d-tab active\" onclick=\"switchDiagram('component', this)\">🧩 Component & Protocol Architecture</button>");
-        sb.AppendLine("          <button class=\"d-tab\" onclick=\"switchDiagram('context', this)\">🏛️ C4 System Context</button>");
-        sb.AppendLine("          <button class=\"d-tab\" onclick=\"switchDiagram('dataflow', this)\">⚡ Data & Event Flow</button>");
-        sb.AppendLine("        </div>");
-        sb.AppendLine("        <div class=\"diagram-controls\">");
-        sb.AppendLine("          <button class=\"ctrl-btn\" onclick=\"zoomDiagram(1.2)\" title=\"Zoom In\">➕</button>");
-        sb.AppendLine("          <button class=\"ctrl-btn\" onclick=\"zoomDiagram(0.8)\" title=\"Zoom Out\">➖</button>");
-        sb.AppendLine("          <button class=\"ctrl-btn\" onclick=\"resetZoom()\" title=\"Reset Fit\">⛶ Reset</button>");
-        sb.AppendLine("          <button class=\"ctrl-btn fullscreen-btn\" onclick=\"toggleFullscreen()\" title=\"Enlarge / Fullscreen\">⤢ Enlarge</button>");
-        sb.AppendLine("        </div>");
-        sb.AppendLine("      </div>");
-
-        sb.AppendLine($"      <p class=\"arch-summary\">{HttpUtility.HtmlEncode(spec.Architecture.Summary)}</p>");
-
-        // Pan-Zoom Diagram Viewport
-        sb.AppendLine("      <div class=\"diagram-viewport-container\" id=\"diagramViewportContainer\">");
-        sb.AppendLine("        <div class=\"diagram-viewport\" id=\"diagramViewport\">");
-
-        // Diagram 1: Component Diagram
-        sb.AppendLine("          <div id=\"diag-component\" class=\"diagram-pane active\">");
-        sb.AppendLine("            <pre class=\"mermaid\">");
-        sb.AppendLine(HttpUtility.HtmlEncode(componentDiagram));
-        sb.AppendLine("            </pre>");
-        sb.AppendLine("          </div>");
-
-        // Diagram 2: Context Diagram
-        sb.AppendLine("          <div id=\"diag-context\" class=\"diagram-pane\">");
-        sb.AppendLine("            <pre class=\"mermaid\">");
-        sb.AppendLine(HttpUtility.HtmlEncode(contextDiagram));
-        sb.AppendLine("            </pre>");
-        sb.AppendLine("          </div>");
-
-        // Diagram 3: Data Flow Diagram
-        sb.AppendLine("          <div id=\"diag-dataflow\" class=\"diagram-pane\">");
-        sb.AppendLine("            <pre class=\"mermaid\">");
-        sb.AppendLine(HttpUtility.HtmlEncode(dataFlowDiagram));
-        sb.AppendLine("            </pre>");
-        sb.AppendLine("          </div>");
-
-        sb.AppendLine("        </div>");
-        sb.AppendLine("      </div>");
-        sb.AppendLine("    </section>");
 
         // Automated Code Review & Architectural Insights Card
         if (cr != null && (!string.IsNullOrWhiteSpace(cr.Summary) || cr.Findings.Count > 0 || cr.Strengths.Count > 0))
@@ -728,14 +867,17 @@ public static class HtmlVisualizerGenerator
 
         sb.AppendLine("  </main>");
 
-        // Sliding Inspector Drawer
+        // 360-Degree Architecture Repository Drawer
         sb.AppendLine("  <div class=\"inspector-drawer\" id=\"inspectorDrawer\">");
         sb.AppendLine("    <div class=\"drawer-header\">");
-        sb.AppendLine("      <h3 id=\"drawerTitle\">Component Details</h3>");
+        sb.AppendLine("      <div class=\"drawer-title-group\">");
+        sb.AppendLine("        <span class=\"badge comp-badge\" id=\"drawerTypeBadge\">Component</span>");
+        sb.AppendLine("        <h3 id=\"drawerTitle\">Component Details</h3>");
+        sb.AppendLine("      </div>");
         sb.AppendLine("      <button class=\"close-btn\" onclick=\"closeDrawer()\">✕</button>");
         sb.AppendLine("    </div>");
         sb.AppendLine("    <div class=\"drawer-body\" id=\"drawerBody\">");
-        sb.AppendLine("      <p>Click on any component or diagram node to inspect responsibilities and details.</p>");
+        sb.AppendLine("      <p>Click on any component card or diagram node to inspect responsibilities, mapped business use cases, and contracts.</p>");
         sb.AppendLine("    </div>");
         sb.AppendLine("  </div>");
 
@@ -743,8 +885,9 @@ public static class HtmlVisualizerGenerator
         sb.AppendLine($"    <p>Generated by <strong>AtlasResourceCRD CLI</strong> • {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</p>");
         sb.AppendLine("  </footer>");
 
-        // Client-Side Scripts
+        // Client-Side Scripts & Embedded Architecture Data Store
         sb.AppendLine("  <script>");
+        sb.AppendLine($"window.__ATLAS_CATALOG__ = {catalogJson};");
         sb.AppendLine(GetClientJs());
         sb.AppendLine("  </script>");
         sb.AppendLine("</body>");
@@ -875,6 +1018,30 @@ body {
 .header-left { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .card-header h2 { font-size: 1.25rem; font-weight: 700; }
 
+/* C4 Legend Bar */
+.c4-legend-bar {
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+.legend-title { font-weight: 700; color: var(--text-secondary); }
+.legend-item { display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600; }
+.legend-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.c4-person .legend-swatch { background: #08427b; border: 1px solid #073b6e; }
+.c4-system .legend-swatch { background: #1168bd; border: 1px solid #0b4884; }
+.c4-container .legend-swatch { background: #2366a0; border: 1px solid #174670; }
+.c4-component .legend-swatch { background: #438dd5; border: 1px solid #2b6ba8; }
+.c4-external .legend-swatch { background: #686868; border: 1px solid #4a4a4a; }
+.c4-db .legend-swatch { background: #08427b; border: 1px solid #073b6e; }
+.legend-hint { margin-left: auto; color: var(--accent-blue); font-size: 0.75rem; }
+
 /* Risk Assessment Card */
 .readiness-pill { font-size: 0.85rem; font-weight: 800; padding: 0.35rem 0.8rem; border-radius: 9999px; }
 .readiness-approved { background: #065f4630; color: #34d399; border: 1px solid #065f46; }
@@ -913,6 +1080,42 @@ body {
 .res-low { background: #065f4630; color: #34d399; }
 .res-med { background: #854d0e30; color: #fde047; }
 .res-high { background: #991b1b30; color: #f87171; }
+
+/* Living Documentation Accordion Matrix */
+.living-doc-card { border-top: 3px solid #10b981; }
+.capabilities-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+.cap-pill-card { background: #0f172a; border: 1px solid var(--border-color); border-radius: 10px; padding: 0.9rem; }
+.cap-pill-card h4 { color: #34d399; font-size: 0.95rem; margin-bottom: 0.3rem; }
+.cap-pill-card p { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.3rem; }
+.cap-pill-card small { color: #94a3b8; font-size: 0.8rem; }
+
+.use-case-accordion-container { display: flex; flex-direction: column; gap: 0.75rem; }
+.uc-card { background: #0f172a; border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; transition: border-color 0.2s; }
+.uc-card:hover { border-color: var(--accent-blue); }
+.uc-header { display: flex; justify-content: space-between; align-items: center; padding: 0.9rem 1.25rem; cursor: pointer; user-select: none; background: #131d31; }
+.uc-header-left { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.uc-id-badge { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 800; background: #3b82f630; color: #60a5fa; padding: 0.2rem 0.5rem; border-radius: 4px; }
+.uc-title { font-size: 1rem; color: var(--text-primary); }
+.accordion-icon { font-size: 0.8rem; color: var(--text-secondary); transition: transform 0.2s; }
+.uc-card.open .accordion-icon { transform: rotate(180deg); }
+.uc-body { display: none; padding: 1.25rem; border-top: 1px solid var(--border-color); background: #0b1120; }
+.uc-card.open .uc-body { display: block; }
+.uc-callout { background: #1e293b; border-left: 3px solid #38bdf8; padding: 0.6rem 0.8rem; border-radius: 4px; font-size: 0.9rem; margin-bottom: 0.75rem; }
+.uc-field { font-size: 0.85rem; color: #cbd5e1; margin-bottom: 0.5rem; }
+.uc-section-block { margin-top: 0.85rem; font-size: 0.85rem; }
+.uc-section-block strong { color: var(--accent-cyan); display: block; margin-bottom: 0.35rem; }
+.uc-section-block ul { list-style: none; display: flex; flex-direction: column; gap: 0.2rem; color: var(--text-secondary); }
+.uc-flow-list { padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.3rem; color: #e2e8f0; }
+.rules-tag-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.rule-tag { background: #1e293b; border: 1px solid #475569; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.8rem; color: #cbd5e1; }
+.bdd-list { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.4rem; }
+.bdd-card { background: #111c30; border: 1px solid #1e3a5f; border-radius: 8px; padding: 0.75rem 1rem; }
+.bdd-card h5 { color: #38bdf8; margin-bottom: 0.4rem; font-size: 0.85rem; }
+.bdd-line { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #cbd5e1; margin: 0.15rem 0; }
+.bdd-kw { color: #f59e0b; font-weight: 700; }
+.uc-footer-links { margin-top: 1rem; border-top: 1px solid #1e293b; padding-top: 0.75rem; display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.8rem; }
+.uc-footer-links a { color: var(--accent-blue); text-decoration: none; }
+.uc-footer-links a:hover { text-decoration: underline; }
 
 /* Quality Card */
 .stars-rating { font-size: 1.15rem; color: #fbbf24; display: flex; align-items: center; gap: 0.4rem; }
@@ -1035,6 +1238,12 @@ body {
 .diagram-pane .mermaid svg {
   max-width: 100% !important;
   height: auto !important;
+  cursor: pointer;
+}
+
+/* Node Spotlight effect on hover */
+.diagram-pane .mermaid svg g.node {
+  transition: opacity 0.2s, transform 0.2s;
 }
 
 /* Fullscreen Mode */
@@ -1101,16 +1310,16 @@ body {
 .yaml-viewer { background: #060b14; border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; overflow-x: auto; max-height: 500px; }
 .yaml-viewer code { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #e2e8f0; }
 
-/* Inspector Drawer */
+/* 360-Degree Architecture Repository Inspector Drawer */
 .inspector-drawer {
   position: fixed;
-  right: -420px;
+  right: -480px;
   top: 0;
-  width: 400px;
+  width: 460px;
   height: 100vh;
   background: #1e293b;
   border-left: 1px solid var(--border-color);
-  box-shadow: -8px 0 24px rgba(0,0,0,0.5);
+  box-shadow: -8px 0 32px rgba(0,0,0,0.6);
   z-index: 1100;
   transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 1.5rem;
@@ -1118,10 +1327,18 @@ body {
 }
 
 .inspector-drawer.open { right: 0; }
-.drawer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; }
-.drawer-header h3 { font-size: 1.15rem; font-weight: 700; color: var(--accent-blue); }
-.close-btn { background: transparent; border: none; color: var(--text-secondary); font-size: 1.2rem; cursor: pointer; }
+.drawer-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; }
+.drawer-title-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.drawer-header h3 { font-size: 1.25rem; font-weight: 800; color: #f8fafc; }
+.close-btn { background: transparent; border: none; color: var(--text-secondary); font-size: 1.3rem; cursor: pointer; padding: 0.2rem; }
 .close-btn:hover { color: #fff; }
+
+.drawer-section { margin-top: 1.25rem; }
+.drawer-section h4 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-blue); margin-bottom: 0.5rem; border-bottom: 1px solid #33415550; padding-bottom: 0.25rem; }
+.drawer-badge-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.drawer-list { list-style: none; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.85rem; color: #cbd5e1; }
+.drawer-link { color: var(--accent-cyan); text-decoration: none; }
+.drawer-link:hover { text-decoration: underline; }
 
 .footer { text-align: center; color: var(--text-secondary); font-size: 0.85rem; margin-top: 2rem; }
 """;
@@ -1129,7 +1346,17 @@ body {
     private static string GetClientJs() => """
 mermaid.initialize({
   startOnLoad: false,
-  theme: 'dark',
+  theme: 'base',
+  themeVariables: {
+    primaryColor: '#1168BD',
+    primaryTextColor: '#FFFFFF',
+    primaryBorderColor: '#0B4884',
+    lineColor: '#38BDF8',
+    secondaryColor: '#2366A0',
+    tertiaryColor: '#438DD5',
+    fontSize: '14px',
+    fontFamily: 'Plus Jakarta Sans, sans-serif'
+  },
   securityLevel: 'loose',
   flowchart: { useMaxWidth: false, htmlLabels: true, curve: 'basis' }
 });
@@ -1218,9 +1445,23 @@ async function renderPane(paneId) {
   try {
     await mermaid.run({ nodes: [pre] });
     renderedPanes[paneId] = true;
+    attachNodeClickListeners(pane);
   } catch (err) {
     console.error('Mermaid render error for ' + paneId, err);
   }
+}
+
+function attachNodeClickListeners(pane) {
+  var nodes = pane.querySelectorAll('svg g.node');
+  nodes.forEach(function(node) {
+    node.style.cursor = 'pointer';
+    node.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var label = node.textContent || '';
+      var clean = label.replace(/\(.*?\)/g, '').trim();
+      inspectComponent(clean);
+    });
+  });
 }
 
 // Tab Switcher
@@ -1238,6 +1479,53 @@ async function switchDiagram(type, btn) {
     await renderPane('diag-' + type);
   }
   resetZoom();
+}
+
+// SVG Export
+function exportDiagramSvg() {
+  var activePane = document.querySelector('.diagram-pane.active');
+  if (!activePane) return;
+  var svg = activePane.querySelector('svg');
+  if (!svg) { alert('No active diagram rendered yet.'); return; }
+  var svgData = new XMLSerializer().serializeToString(svg);
+  var blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'architecture_diagram.svg';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// PNG Export
+function exportDiagramPng() {
+  var activePane = document.querySelector('.diagram-pane.active');
+  if (!activePane) return;
+  var svg = activePane.querySelector('svg');
+  if (!svg) { alert('No active diagram rendered yet.'); return; }
+  var svgData = new XMLSerializer().serializeToString(svg);
+  var canvas = document.createElement('canvas');
+  var ctx = canvas.getContext('2d');
+  var img = new Image();
+  var blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+
+  img.onload = function() {
+    canvas.width = img.width * 2;
+    canvas.height = img.height * 2;
+    ctx.fillStyle = '#0b1120';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    var pngUrl = canvas.toDataURL('image/png');
+    var a = document.createElement('a');
+    a.href = pngUrl;
+    a.download = 'architecture_diagram.png';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+  img.src = url;
 }
 
 // Search API table
@@ -1270,6 +1558,21 @@ function filterThreatTable() {
   }
 }
 
+// Search Living Docs Use Cases
+function filterUseCases() {
+  var input = document.getElementById('ucSearch').value.toUpperCase();
+  var cards = document.querySelectorAll('.uc-card');
+  cards.forEach(function(card) {
+    var text = card.textContent || card.innerText;
+    card.style.display = text.toUpperCase().indexOf(input) > -1 ? '' : 'none';
+  });
+}
+
+function toggleUseCase(header) {
+  var card = header.closest('.uc-card');
+  card.classList.toggle('open');
+}
+
 // Copy CRD YAML
 function copyCrdYaml() {
   var text = document.getElementById('crdYamlCode').innerText;
@@ -1278,14 +1581,93 @@ function copyCrdYaml() {
   });
 }
 
-// Inspector Drawer
+// 360-Degree Architecture Repository Inspector
 function inspectComponent(name) {
+  var catalog = window.__ATLAS_CATALOG__ || {};
+  var spec = catalog.spec || {};
+  var comps = (spec.architecture && spec.architecture.components) || [];
+  var useCases = (spec.functionalSpecs && spec.functionalSpecs.useCases) || [];
+  var endpoints = (spec.apiContracts && spec.apiContracts.endpoints) || [];
+  var findings = (spec.codeReview && spec.codeReview.findings) || [];
+
+  var comp = comps.find(function(c) {
+    return c.name && (c.name.toLowerCase() === name.toLowerCase() || name.toLowerCase().includes(c.name.toLowerCase()));
+  });
+
   var drawer = document.getElementById('inspectorDrawer');
   var title = document.getElementById('drawerTitle');
+  var badge = document.getElementById('drawerTypeBadge');
   var body = document.getElementById('drawerBody');
-  title.innerText = name;
-  body.innerHTML = '<p><strong>Selected Component:</strong> ' + name + '</p><p style="margin-top:0.75rem; color:#94a3b8;">Detailed responsibilities and active contracts are listed in the modules panel.</p>';
+
+  title.innerText = comp ? comp.name : name;
+  badge.innerText = comp ? comp.type : 'Component';
+
+  var html = '';
+  if (comp) {
+    html += '<p style="color:var(--text-secondary); margin-bottom:1rem;">' + (comp.description || 'No description available.') + '</p>';
+    
+    if (comp.responsibilities && comp.responsibilities.length > 0) {
+      html += '<div class="drawer-section"><h4>Core Responsibilities</h4><ul class="drawer-list">';
+      comp.responsibilities.forEach(function(r) { html += '<li>• ' + r + '</li>'; });
+      html += '</ul></div>';
+    }
+  } else {
+    html += '<p style="color:var(--text-secondary); margin-bottom:1rem;">Architectural subsystem node: <strong>' + name + '</strong></p>';
+  }
+
+  // Mapped Use Cases
+  var mappedUcs = useCases.filter(function(u) {
+    return (u.associatedComponents && u.associatedComponents.some(function(c) { return c.toLowerCase().includes(name.toLowerCase()); })) ||
+           (u.title && u.title.toLowerCase().includes(name.toLowerCase()));
+  });
+
+  if (mappedUcs.length > 0) {
+    html += '<div class="drawer-section"><h4>Mapped Business Use-Cases (' + mappedUcs.length + ')</h4><ul class="drawer-list">';
+    mappedUcs.forEach(function(u) {
+      html += '<li><a class="drawer-link" href="#livingDocsSection" onclick="openAndScrollToUseCase(\'' + u.id + '\')"><strong>[' + u.id + ']</strong> ' + u.title + '</a></li>';
+    });
+    html += '</ul></div>';
+  }
+
+  // Associated Endpoints
+  var mappedEps = endpoints.filter(function(e) {
+    return (e.path && e.path.toLowerCase().includes(name.toLowerCase())) ||
+           (e.description && e.description.toLowerCase().includes(name.toLowerCase()));
+  });
+
+  if (mappedEps.length > 0) {
+    html += '<div class="drawer-section"><h4>Active API Endpoints (' + mappedEps.length + ')</h4><ul class="drawer-list">';
+    mappedEps.forEach(function(e) {
+      html += '<li><code>' + e.method + ' ' + e.path + '</code><br><small style="color:var(--text-secondary);">' + e.description + '</small></li>';
+    });
+    html += '</ul></div>';
+  }
+
+  // Code Review Findings for this component
+  var mappedFindings = findings.filter(function(f) {
+    return (f.file && f.file.toLowerCase().includes(name.toLowerCase())) ||
+           (f.symbol && f.symbol.toLowerCase().includes(name.toLowerCase()));
+  });
+
+  if (mappedFindings.length > 0) {
+    html += '<div class="drawer-section"><h4>Review Findings (' + mappedFindings.length + ')</h4><ul class="drawer-list">';
+    mappedFindings.forEach(function(f) {
+      html += '<li><strong>' + f.title + '</strong> (' + f.severity + ')<br><small style="color:#f87171;">' + f.recommendation + '</small></li>';
+    });
+    html += '</ul></div>';
+  }
+
+  body.innerHTML = html;
   drawer.classList.add('open');
+}
+
+function openAndScrollToUseCase(ucId) {
+  closeDrawer();
+  var card = document.querySelector('.uc-card[data-title*="' + ucId + '"]') || document.querySelector('.uc-id-badge:contains("' + ucId + '")');
+  if (card) {
+    card.classList.add('open');
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 
 function closeDrawer() {

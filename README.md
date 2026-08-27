@@ -20,10 +20,20 @@
   - Validates diagram syntax (balanced subgraphs, bracket matching, arrow escaping, pipe syntax).
   - Automatically sanitizes common syntax hazards (e.g. `->` inside quotes).
   - Iterative LLM repair loop auto-corrects broken diagrams with deterministic fallback generators.
-- 🏛️ **Interactive Multi-Diagram Suite (C4 Model)**:
-  - **`contextDiagram` (C4 Level 1 System Context)**: Maps End Users, Client Interfaces, Core System Boundaries, External Cloud APIs, and Local Network Hardware.
-  - **`componentDiagram` (C4 Level 2/3 Component & Subsystem)**: Visualizes internal modules, controllers, rule engines, and plugin layers with **exact protocol annotations on links** (`HTTP/REST`, `MQTT/mTLS 8883`, `Influx Line Protocol`, `Matter UDP`, `SSE`).
-  - **`dataFlowDiagram` (Data & Event Lifecycle)**: Traces the end-to-end telemetry ingestion, normalization, rule execution, AI analysis, and time-series persistence pipeline.
+- 📖 **Living Documentation & Functional Specifications**:
+  - High-level **Business Capabilities** and measurable business outcomes.
+  - Comprehensive **Business Use-Cases** with Primary Actors, Triggers, Preconditions, Step-by-Step Main Flows, and Business Invariants.
+  - Formatted **BDD Given-When-Then Acceptance Scenarios** for automated living documentation and regression testing.
+- 🏛️ **Interactive Architecture Suite (Official C4 Model Standard)**:
+  - **Official C4 Model Palette**: Person (`#08427B`), Software System (`#1168BD`), Container (`#2366A0`), Component (`#438DD5`), External System (`#686868`), and Database (`#08427B`).
+  - **Interactive C4 Legend**: Visual color-coded palette bar embedded in the diagram header.
+  - **360-Degree Architecture Repository Drawer**: Click **any diagram node** or component card to slide open an in-depth inspector with mapped business use cases, active API endpoints, source files, and review findings.
+  - **1-Click High-Res Export**: Instant download of rendered diagrams to vector **SVG** and **PNG** for design reviews and Confluence.
+  - **Node Spotlight on Hover**: Dims unrelated nodes to clearly trace connected communication links and protocols.
+  - **`contextDiagram` (C4 Level 1)**, **`componentDiagram` (C4 Level 2/3)**, and **`dataFlowDiagram` (Lifecycle)**.
+- ⚡ **High-Throughput Parallelism & Multi-Tier Git Caching**:
+  - Parallel Map Phase scaling up to **16 concurrent workers** by default for lightning-fast analysis of large codebases.
+  - Git Blob SHA file caching + Synthesis & Artifact Caching for **<50ms instant cache hits**.
 - 🚨 **Executive Risk & Blast Radius Assessment**:
   - Uncompromising, critical principal auditor persona designed specifically for **high-security, air-gapped, and regulated environments**.
   - **Production Readiness Verdict**: 🟢 `Approved`, 🟡 `Conditional`, or 🔴 `Blocked`.
@@ -49,8 +59,7 @@
 - 🖥️ **Interactive Fullscreen HTML Visualizer**:
   - Standalone, zero-dependency `atlas.html` dashboard with live client-side Mermaid rendering.
   - **Fullscreen Modal Viewport** with smooth mouse-wheel zooming and drag-to-pan.
-  - **Interactive Component Inspector Drawer**: Click any node to inspect responsibilities and active contracts.
-  - **Filterable Code Review & API Tables & 1-Click CRD YAML Copy**.
+  - **Filterable Code Review, Threat Model, API, and Living Documentation Tables**.
   - **Auto-Browser Launch**: Automatically opens the generated dashboard in your default browser.
 - 📜 **Kubernetes CRD & Backstage Standardized**:
   - Outputs compliant `atlas.io/v1alpha1` Kubernetes manifests validated against RFC-1123 DNS naming rules.

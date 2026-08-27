@@ -141,6 +141,22 @@ public static class CrdValidator
                     result.Warnings.Add($"ProductionReadiness '{resource.Spec.RiskSummary.ProductionReadiness}' should be Approved, Conditional, or Blocked.");
                 }
             }
+
+            // Functional Specs & Living Documentation Validation
+            if (resource.Spec.FunctionalSpecs != null)
+            {
+                foreach (var uc in resource.Spec.FunctionalSpecs.UseCases)
+                {
+                    if (string.IsNullOrWhiteSpace(uc.Id))
+                    {
+                        result.Warnings.Add("Business use case missing required 'id'.");
+                    }
+                    if (string.IsNullOrWhiteSpace(uc.Title))
+                    {
+                        result.Warnings.Add($"Business use case '{uc.Id}' missing required 'title'.");
+                    }
+                }
+            }
         }
 
         return result;

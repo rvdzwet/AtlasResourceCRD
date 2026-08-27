@@ -99,6 +99,10 @@ public sealed class AtlasResourceSpec
     [YamlMember(Alias = "threatModel", Order = 13)]
     [JsonPropertyName("threatModel")]
     public ThreatModelSpec ThreatModel { get; set; } = new();
+
+    [YamlMember(Alias = "functionalSpecs", Order = 14)]
+    [JsonPropertyName("functionalSpecs")]
+    public FunctionalSpecs FunctionalSpecs { get; set; } = new();
 }
 
 public sealed class ComponentOverview
@@ -808,4 +812,100 @@ public sealed class ThreatVector
     [YamlMember(Alias = "residualRisk", Order = 7)]
     [JsonPropertyName("residualRisk")]
     public string ResidualRisk { get; set; } = "Low"; // Low, Medium, High
+}
+
+public sealed class FunctionalSpecs
+{
+    [YamlMember(Alias = "capabilities", Order = 1)]
+    [JsonPropertyName("capabilities")]
+    public List<CapabilityItem> Capabilities { get; set; } = new();
+
+    [YamlMember(Alias = "useCases", Order = 2)]
+    [JsonPropertyName("useCases")]
+    public List<BusinessUseCase> UseCases { get; set; } = new();
+}
+
+public sealed class CapabilityItem
+{
+    [YamlMember(Alias = "name", Order = 1)]
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "description", Order = 2)]
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "businessOutcome", Order = 3)]
+    [JsonPropertyName("businessOutcome")]
+    public string BusinessOutcome { get; set; } = string.Empty;
+}
+
+public sealed class BusinessUseCase
+{
+    [YamlMember(Alias = "id", Order = 1)]
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty; // e.g. UC-01
+
+    [YamlMember(Alias = "title", Order = 2)]
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "capability", Order = 3)]
+    [JsonPropertyName("capability")]
+    public string Capability { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "primaryActor", Order = 4)]
+    [JsonPropertyName("primaryActor")]
+    public string PrimaryActor { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "businessValue", Order = 5)]
+    [JsonPropertyName("businessValue")]
+    public string BusinessValue { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "trigger", Order = 6)]
+    [JsonPropertyName("trigger")]
+    public string Trigger { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "preconditions", Order = 7)]
+    [JsonPropertyName("preconditions")]
+    public List<string> Preconditions { get; set; } = new();
+
+    [YamlMember(Alias = "mainFlow", Order = 8)]
+    [JsonPropertyName("mainFlow")]
+    public List<string> MainFlow { get; set; } = new();
+
+    [YamlMember(Alias = "businessRules", Order = 9)]
+    [JsonPropertyName("businessRules")]
+    public List<string> BusinessRules { get; set; } = new();
+
+    [YamlMember(Alias = "acceptanceScenarios", Order = 10)]
+    [JsonPropertyName("acceptanceScenarios")]
+    public List<BddScenario> AcceptanceScenarios { get; set; } = new();
+
+    [YamlMember(Alias = "associatedComponents", Order = 11)]
+    [JsonPropertyName("associatedComponents")]
+    public List<string> AssociatedComponents { get; set; } = new();
+
+    [YamlMember(Alias = "associatedApis", Order = 12)]
+    [JsonPropertyName("associatedApis")]
+    public List<string> AssociatedApis { get; set; } = new();
+}
+
+public sealed class BddScenario
+{
+    [YamlMember(Alias = "scenarioTitle", Order = 1)]
+    [JsonPropertyName("scenarioTitle")]
+    public string ScenarioTitle { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "given", Order = 2)]
+    [JsonPropertyName("given")]
+    public string Given { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "when", Order = 3)]
+    [JsonPropertyName("when")]
+    public string When { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "then", Order = 4)]
+    [JsonPropertyName("then")]
+    public string Then { get; set; } = string.Empty;
 }

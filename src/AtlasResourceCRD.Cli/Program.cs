@@ -83,7 +83,7 @@ public static class Program
         var clearCache = false;
         var forceSynth = false;
         var noOpen = false;
-        var concurrency = 8;
+        var concurrency = 16;
         var maxFiles = int.MaxValue;
         string? endpoint = Environment.GetEnvironmentVariable("GEMINI_ENDPOINT");
         string? apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY")
@@ -166,7 +166,7 @@ public static class Program
         }
 
         logger.LogInformation("================================================================================");
-        logger.LogInformation("AtlasResourceCRD Scanner CLI v1.2.0 (Target: {Path})", fullPath);
+        logger.LogInformation("AtlasResourceCRD Scanner CLI v1.3.0 (Target: {Path})", fullPath);
         logger.LogInformation("Gemini Model: {Model} | Thinking: {Thinking} | Concurrency: {Concurrency}",
             model, thinkingLevel, concurrency);
         logger.LogInformation("================================================================================");

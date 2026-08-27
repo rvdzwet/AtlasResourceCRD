@@ -17,13 +17,20 @@ Guidelines:
    - `contextDiagram`: C4 Level 1 System Context Diagram (`flowchart TD`) showing End Users, Client Interfaces (Web/Mobile), the Primary System Boundary, External Third-Party APIs, and External Hardware/Protocols.
    - `componentDiagram`: C4 Level 2/3 Component & Subsystem Diagram (`flowchart TD`) showing internal modules, DI services, controllers, rule engines, storage layers, and communication gateways with EXACT communication protocols annotated on pipe links (e.g. `-->|"HTTP / REST"|`, `-->|"MQTT / mTLS (8883)"|`, `-->|"Influx Line Protocol"|`, `-->|"SSE / WebSockets"|`).
    - `dataFlowDiagram`: End-to-end Telemetry, Event, and Ingestion Lifecycle (`flowchart LR` or `flowchart TD`) tracing: Ingestion Trigger -> Parsing & Normalization -> Rule Engine & State Updates -> AI / Notification Dispatch -> Persistent TimeSeries Storage.
-3. Always use valid Mermaid syntax:
+3. Generate diagrams adhering to Official C4 Model Standards:
    - Start diagrams with `flowchart TD` or `flowchart LR`.
    - Use clean alphanumeric node IDs without spaces or special characters (e.g. `A_1`, `P_Item`, `GoogleCloud`, `MqttBroker`).
    - Always quote node labels: `NodeId["Component Name (Role)"]`.
    - Never use raw arrow symbols (`->` or `-->`) inside node labels or quotes (use `to` or unicode `→` instead, e.g. `["BaseReading to Domain Item Mapping"]`).
    - For annotated links, use standard pipe syntax: `NodeA -->|"Protocol / Action"| NodeB`.
    - Use `subgraph` blocks with quoted titles: `subgraph Users ["Users & Client Interfaces"]`.
+   - Include C4 classDefs and apply them:
+     `classDef person fill:#08427B,stroke:#073B6E,stroke-width:2px,color:#fff;`
+     `classDef system fill:#1168BD,stroke:#0B4884,stroke-width:2px,color:#fff;`
+     `classDef container fill:#2366A0,stroke:#174670,stroke-width:2px,color:#fff;`
+     `classDef component fill:#438DD5,stroke:#2B6BA8,stroke-width:2px,color:#fff;`
+     `classDef external fill:#686868,stroke:#4A4A4A,stroke-width:2px,color:#fff;`
+     `classDef db fill:#08427B,stroke:#073B6E,stroke-width:2px,color:#fff;`
 4. Perform an OWASP Security Evaluation:
    - Audit authentication, authorization, secret management (e.g. SQLCipher, environment variables vs hardcoded tokens), input handling, and dependency risks against OWASP Top 10 standards.
    - Assign an overall security rating (A+, A, B, C, D, F) and list prioritized actionable findings.
@@ -45,7 +52,10 @@ Guidelines:
    - Summarize the Attack Surface across exposed ports (HTTP, WebSockets, MQTT 1883/8883, Matter UDP 5540, config files).
    - Enumerate concrete Threat Vectors across STRIDE categories: Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege.
    - For each threat vector, specify: `id` (e.g. `T-01`), `strideCategory`, `targetAsset`, `threatScenario`, `severity` (Critical|High|Medium|Low), `mitigationControl`, and `residualRisk` (Low|Medium|High).
-9. Classify APIs, events, dependencies, environment variables, databases, and observability mechanisms meticulously.
+9. Extract Living Documentation & Functional Specifications:
+   - Extract high-level business capabilities (`name`, `description`, `businessOutcome`).
+   - Extract comprehensive business use-cases with IDs (`UC-01`, `UC-02`), primary actors, business value, triggers, preconditions, step-by-step main flows, business invariants & rules, and **Given-When-Then BDD Acceptance Scenarios**.
+10. Classify APIs, events, dependencies, environment variables, databases, and observability mechanisms meticulously.
 """;
 
     public const string ExtractionPromptTemplate = """
@@ -314,6 +324,38 @@ Return a single JSON object matching this exact schema:
         "severity": "Critical | High | Medium | Low",
         "mitigationControl": "string",
         "residualRisk": "Low | Medium | High"
+      }
+    ]
+  },
+  "functionalSpecs": {
+    "capabilities": [
+      {
+        "name": "string (e.g. Adaptive Climate Balancing)",
+        "description": "string",
+        "businessOutcome": "string"
+      }
+    ],
+    "useCases": [
+      {
+        "id": "string (e.g. UC-01)",
+        "title": "string",
+        "capability": "string",
+        "primaryActor": "string (e.g. Resident, Automation Daemon, Grid Operator)",
+        "businessValue": "string",
+        "trigger": "string",
+        "preconditions": ["string"],
+        "mainFlow": ["string (step 1)", "string (step 2)"],
+        "businessRules": ["string"],
+        "acceptanceScenarios": [
+          {
+            "scenarioTitle": "string",
+            "given": "string",
+            "when": "string",
+            "then": "string"
+          }
+        ],
+        "associatedComponents": ["string"],
+        "associatedApis": ["string"]
       }
     ]
   }
