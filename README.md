@@ -20,10 +20,16 @@
   - Validates diagram syntax (balanced subgraphs, bracket matching, arrow escaping, pipe syntax).
   - Automatically sanitizes common syntax hazards (e.g. `->` inside quotes).
   - Iterative LLM repair loop auto-corrects broken diagrams with deterministic fallback generators.
-- 📖 **Living Documentation & Functional Specifications**:
-  - High-level **Business Capabilities** and measurable business outcomes.
-  - Comprehensive **Business Use-Cases** with Primary Actors, Triggers, Preconditions, Step-by-Step Main Flows, and Business Invariants.
-  - Formatted **BDD Given-When-Then Acceptance Scenarios** for automated living documentation and regression testing.
+- 📖 **Deep Functional Specifications & Living Logic Blueprints**:
+  - High-level **Business Capabilities** linked to measurable business outcomes.
+  - Executable-grade **Business Use-Cases** detailed enough to rebuild/reimplement domain logic:
+    - **Input Data Contracts**: Parameter schemas, units, data types, and valid ranges.
+    - **Execution Logic**: Detailed step-by-step algorithms and main workflows.
+    - **Alternative & Exception Flows**: Error handling, timeouts, fallbacks, and circuit breaker policies.
+    - **Business Invariants**: Formulas, domain guardrails, rate limits, and timing thresholds.
+    - **Output State Mutations**: Persisted database records, in-memory cache updates, and emitted CloudEvents.
+    - **Acceptance Criteria**: Formatted BDD Given-When-Then scenarios covering happy paths and edge cases.
+    - **💡 Architectural Modernization Advice**: Concrete, actionable recommendations on every use-case to modernize, decouple, or scale the implementation (e.g. MediatR outboxes, saga orchestrators, reactive event streams).
 - 🏛️ **Interactive Architecture Suite (Official C4 Model Standard)**:
   - **Official C4 Model Palette**: Person (`#08427B`), Software System (`#1168BD`), Container (`#2366A0`), Component (`#438DD5`), External System (`#686868`), and Database (`#08427B`).
   - **Interactive C4 Legend**: Visual color-coded palette bar embedded in the diagram header.

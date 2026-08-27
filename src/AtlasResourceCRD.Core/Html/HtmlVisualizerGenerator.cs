@@ -419,22 +419,49 @@ public static class HtmlVisualizerGenerator
                     sb.AppendLine("              </ul>");
                     sb.AppendLine("            </div>");
                 }
+                if (uc.InputDataContracts.Count > 0)
+                {
+                    sb.AppendLine("            <div class=\"uc-section-block\">");
+                    sb.AppendLine("              <strong>Input Data Contracts & Required Parameters:</strong>");
+                    sb.AppendLine("              <div class=\"uc-data-contracts\">");
+                    foreach (var dc in uc.InputDataContracts) sb.AppendLine($"                <div class=\"contract-item\"><code>{HttpUtility.HtmlEncode(dc)}</code></div>");
+                    sb.AppendLine("              </div>");
+                    sb.AppendLine("            </div>");
+                }
                 if (uc.MainFlow.Count > 0)
                 {
                     sb.AppendLine("            <div class=\"uc-section-block\">");
-                    sb.AppendLine("              <strong>Execution Workflow / Main Flow:</strong>");
+                    sb.AppendLine("              <strong>Execution Logic / Step-by-Step Main Flow:</strong>");
                     sb.AppendLine("              <ol class=\"uc-flow-list\">");
                     foreach (var step in uc.MainFlow) sb.AppendLine($"                <li>{HttpUtility.HtmlEncode(step)}</li>");
                     sb.AppendLine("              </ol>");
                     sb.AppendLine("            </div>");
                 }
+                if (uc.AlternativeAndExceptionFlows.Count > 0)
+                {
+                    sb.AppendLine("            <div class=\"uc-section-block uc-exception-block\">");
+                    sb.AppendLine("              <strong>⚠️ Alternative & Exception Handling Flows:</strong>");
+                    sb.AppendLine("              <ul>");
+                    foreach (var exc in uc.AlternativeAndExceptionFlows) sb.AppendLine($"                <li>• {HttpUtility.HtmlEncode(exc)}</li>");
+                    sb.AppendLine("              </ul>");
+                    sb.AppendLine("            </div>");
+                }
                 if (uc.BusinessRules.Count > 0)
                 {
                     sb.AppendLine("            <div class=\"uc-section-block\">");
-                    sb.AppendLine("              <strong>Business Invariants & Policies:</strong>");
+                    sb.AppendLine("              <strong>Business Invariants & Domain Policies:</strong>");
                     sb.AppendLine("              <div class=\"rules-tag-list\">");
                     foreach (var r in uc.BusinessRules) sb.AppendLine($"                <span class=\"rule-tag\">📏 {HttpUtility.HtmlEncode(r)}</span>");
                     sb.AppendLine("              </div>");
+                    sb.AppendLine("            </div>");
+                }
+                if (uc.OutputStateChanges.Count > 0)
+                {
+                    sb.AppendLine("            <div class=\"uc-section-block uc-state-changes-block\">");
+                    sb.AppendLine("              <strong>📤 Output State Mutations & Dispatched Events:</strong>");
+                    sb.AppendLine("              <ul>");
+                    foreach (var outState in uc.OutputStateChanges) sb.AppendLine($"                <li>⚡ {HttpUtility.HtmlEncode(outState)}</li>");
+                    sb.AppendLine("              </ul>");
                     sb.AppendLine("            </div>");
                 }
                 if (uc.AcceptanceScenarios.Count > 0)
@@ -452,6 +479,13 @@ public static class HtmlVisualizerGenerator
                         sb.AppendLine("                </div>");
                     }
                     sb.AppendLine("              </div>");
+                    sb.AppendLine("            </div>");
+                }
+                if (!string.IsNullOrWhiteSpace(uc.ArchitecturalAdvice))
+                {
+                    sb.AppendLine("            <div class=\"uc-arch-advice\">");
+                    sb.AppendLine("              <strong>💡 Architectural Recommendation & Modernization:</strong>");
+                    sb.AppendLine($"              <p>{HttpUtility.HtmlEncode(uc.ArchitecturalAdvice)}</p>");
                     sb.AppendLine("            </div>");
                 }
                 if (uc.AssociatedComponents.Count > 0 || uc.AssociatedApis.Count > 0)
@@ -1108,11 +1142,25 @@ body {
 .uc-flow-list { padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.3rem; color: #e2e8f0; }
 .rules-tag-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .rule-tag { background: #1e293b; border: 1px solid #475569; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.8rem; color: #cbd5e1; }
-.bdd-list { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.4rem; }
-.bdd-card { background: #111c30; border: 1px solid #1e3a5f; border-radius: 8px; padding: 0.75rem 1rem; }
-.bdd-card h5 { color: #38bdf8; margin-bottom: 0.4rem; font-size: 0.85rem; }
-.bdd-line { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #cbd5e1; margin: 0.15rem 0; }
-.bdd-kw { color: #f59e0b; font-weight: 700; }
+.uc-data-contracts { display: flex; flex-direction: column; gap: 0.35rem; }
+.contract-item { background: #0f172a; border-left: 3px solid #06b6d4; padding: 0.35rem 0.6rem; border-radius: 4px; font-size: 0.8rem; }
+.contract-item code { font-family: 'JetBrains Mono', monospace; color: #67e8f9; }
+.uc-exception-block { background: #451a0320; border: 1px solid #78350f; border-radius: 6px; padding: 0.75rem; }
+.uc-exception-block strong { color: #fde047 !important; }
+.uc-exception-block ul { color: #fef08a !important; }
+.uc-state-changes-block { background: #14532d20; border: 1px solid #166534; border-radius: 6px; padding: 0.75rem; }
+.uc-state-changes-block strong { color: #86efac !important; }
+.uc-state-changes-block ul { color: #bbf7d0 !important; }
+.uc-arch-advice {
+  margin-top: 1rem;
+  background: linear-gradient(135deg, #1e1b4b, #0f172a);
+  border: 1px solid #6366f1;
+  border-left: 4px solid #818cf8;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+.uc-arch-advice strong { color: #a5b4fc; display: block; margin-bottom: 0.3rem; font-size: 0.85rem; }
+.uc-arch-advice p { color: #e0e7ff; font-size: 0.85rem; line-height: 1.5; }
 .uc-footer-links { margin-top: 1rem; border-top: 1px solid #1e293b; padding-top: 0.75rem; display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.8rem; }
 .uc-footer-links a { color: var(--accent-blue); text-decoration: none; }
 .uc-footer-links a:hover { text-decoration: underline; }

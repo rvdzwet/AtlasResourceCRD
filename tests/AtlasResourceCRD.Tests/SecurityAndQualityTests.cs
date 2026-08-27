@@ -257,8 +257,11 @@ public class SecurityAndQualityTests
                             BusinessValue = "Avoids compressor cycling during peak energy tariffs.",
                             Trigger = "Solar yield drops below 1.5 kW threshold.",
                             Preconditions = new List<string> { "Airco integration online", "Enphase solar gateway responding" },
+                            InputDataContracts = new List<string> { "solarYieldWatts: float (0.0 .. 15000.0)", "ambientTempC: float (10.0 .. 40.0)" },
                             MainFlow = new List<string> { "Read current solar power", "Evaluate adaptive comfort target", "Dispatch HTTP command to Daikin unit" },
+                            AlternativeAndExceptionFlows = new List<string> { "If Daikin unit times out (>2000ms), retry once then trip offline circuit breaker." },
                             BusinessRules = new List<string> { "Maintain minimum compressor runtime of 3 minutes" },
+                            OutputStateChanges = new List<string> { "Persists SetpointChangedEvent to SQLite WAL database", "Dispatches CloudEvent over WebSocket" },
                             AcceptanceScenarios = new List<BddScenario>
                             {
                                 new()
@@ -269,6 +272,7 @@ public class SecurityAndQualityTests
                                     Then = "Airco setpoint is raised to 23C"
                                 }
                             },
+                            ArchitecturalAdvice = "Decouple direct HTTP invocation by publishing a SetClimateModeCommand via MediatR and outbox pattern to guarantee eventual consistency.",
                             AssociatedComponents = new List<string> { "ClimateBrainService", "DaikinClient" }
                         }
                     }
@@ -283,6 +287,11 @@ public class SecurityAndQualityTests
         html.Should().Contain("UC-01");
         html.Should().Contain("Dynamic Airco Setpoint Adjustment");
         html.Should().Contain("Actor: Home Automation Daemon");
+        html.Should().Contain("solarYieldWatts: float");
+        html.Should().Contain("If Daikin unit times out");
+        html.Should().Contain("Persists SetpointChangedEvent");
+        html.Should().Contain("Architectural Recommendation & Modernization");
+        html.Should().Contain("MediatR and outbox pattern");
         html.Should().Contain("Given");
         html.Should().Contain("When");
         html.Should().Contain("Then");

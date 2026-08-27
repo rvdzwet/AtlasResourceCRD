@@ -51,9 +51,19 @@ Guidelines:
    - Summarize the Attack Surface across exposed ports (HTTP, WebSockets, MQTT 1883/8883, Matter UDP 5540, config files).
    - Enumerate all concrete Threat Vectors across STRIDE categories: Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege.
    - For each threat vector, specify: `id` (e.g. `T-01`), `strideCategory`, `targetAsset`, `threatScenario`, `severity` (Critical|High|Medium|Low), `mitigationControl`, and `residualRisk` (Low|Medium|High).
-9. Extract Exhaustive Living Documentation & Functional Specifications:
+9. Extract Deep Functional Specifications & Living Logic Blueprints (`functionalSpecs`):
    - Extract high-level business capabilities (`name`, `description`, `businessOutcome`).
-   - Extract all discovered business use-cases with IDs (`UC-01`, `UC-02`), primary actors, business value, triggers, preconditions, step-by-step main flows, business invariants & rules, and **Given-When-Then BDD Acceptance Scenarios**.
+   - Extract exhaustive, actionable Business Use-Cases detailed enough to reconstruct and rebuild the complete business logic from scratch:
+     * `id` (e.g. `UC-01`), `title`, `capability`, `primaryActor`, `businessValue`, `trigger`
+     * `preconditions`: Required state, active integrations, and prerequisites
+     * `inputDataContracts`: Exact parameters, data types, valid ranges, and schema requirements needed to execute the logic
+     * `mainFlow`: Detailed step-by-step pseudo-algorithm and execution sequence
+     * `alternativeAndExceptionFlows`: Error handling, edge cases, timeout policies, fallback strategies, and failure recovery
+     * `businessRules`: Mathematical formulas, invariants, domain policies, and timing thresholds
+     * `outputStateChanges`: Exact database mutations, in-memory state updates, CloudEvents emitted, and actuator commands dispatched
+     * `acceptanceScenarios`: Formatted BDD Given-When-Then criteria covering happy path and boundary conditions
+     * `architecturalAdvice`: Specific, actionable architectural recommendation to improve, modernize, decouple, or scale this use-case (e.g. migrating polling to reactive event streams, introducing saga orchestrators, adding idempotency keys, replacing tight coupling with domain events)
+     * `associatedComponents` and `associatedApis`
 10. Classify APIs, events, dependencies, environment variables, databases, and observability mechanisms meticulously.
 """;
 
@@ -343,8 +353,11 @@ Return a single JSON object matching this exact schema:
         "businessValue": "string",
         "trigger": "string",
         "preconditions": ["string"],
+        "inputDataContracts": ["string (exact parameter schema, units, types, and valid ranges)"],
         "mainFlow": ["string (step 1)", "string (step 2)"],
-        "businessRules": ["string"],
+        "alternativeAndExceptionFlows": ["string (error handling, timeouts, fallback logic)"],
+        "businessRules": ["string (mathematical invariants, rate limits, thresholds)"],
+        "outputStateChanges": ["string (persisted state, DB changes, CloudEvents, actuator commands)"],
         "acceptanceScenarios": [
           {
             "scenarioTitle": "string",
@@ -353,6 +366,7 @@ Return a single JSON object matching this exact schema:
             "then": "string"
           }
         ],
+        "architecturalAdvice": "string (concrete architectural advice to improve, modernize, decouple, or scale this use-case)",
         "associatedComponents": ["string"],
         "associatedApis": ["string"]
       }

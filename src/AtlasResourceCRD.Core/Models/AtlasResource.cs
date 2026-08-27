@@ -881,15 +881,31 @@ public sealed class BusinessUseCase
     [JsonPropertyName("businessRules")]
     public List<string> BusinessRules { get; set; } = new();
 
-    [YamlMember(Alias = "acceptanceScenarios", Order = 10)]
+    [YamlMember(Alias = "inputDataContracts", Order = 10)]
+    [JsonPropertyName("inputDataContracts")]
+    public List<string> InputDataContracts { get; set; } = new();
+
+    [YamlMember(Alias = "alternativeAndExceptionFlows", Order = 11)]
+    [JsonPropertyName("alternativeAndExceptionFlows")]
+    public List<string> AlternativeAndExceptionFlows { get; set; } = new();
+
+    [YamlMember(Alias = "outputStateChanges", Order = 12)]
+    [JsonPropertyName("outputStateChanges")]
+    public List<string> OutputStateChanges { get; set; } = new();
+
+    [YamlMember(Alias = "acceptanceScenarios", Order = 13)]
     [JsonPropertyName("acceptanceScenarios")]
     public List<BddScenario> AcceptanceScenarios { get; set; } = new();
 
-    [YamlMember(Alias = "associatedComponents", Order = 11)]
+    [YamlMember(Alias = "architecturalAdvice", Order = 14)]
+    [JsonPropertyName("architecturalAdvice")]
+    public string ArchitecturalAdvice { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "associatedComponents", Order = 15)]
     [JsonPropertyName("associatedComponents")]
     public List<string> AssociatedComponents { get; set; } = new();
 
-    [YamlMember(Alias = "associatedApis", Order = 12)]
+    [YamlMember(Alias = "associatedApis", Order = 16)]
     [JsonPropertyName("associatedApis")]
     public List<string> AssociatedApis { get; set; } = new();
 }

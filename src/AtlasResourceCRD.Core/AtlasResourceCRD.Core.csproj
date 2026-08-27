@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.4.1</Version>
+    <Version>1.5.0</Version>
     <Authors>Romano van der Zwet</Authors>
     <Company>RoMars</Company>
     <Description>Core library for AtlasResourceCRD Map-Reduce Software Catalog and Architecture Scanner.</Description>
