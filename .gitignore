@@ -1,0 +1,28 @@
+## .NET Core / Visual Studio
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+.idea/
+.vscode/
+
+## Test Results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+## Atlas Cache & Generated Output
+.atlas/cache/
+atlas.yaml
+atlas.html
+*.log
+
+## OS / Temp
+[Tt]emp/
+[Tt]mp/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AtlasResourceCRD.Cli/AtlasResourceCRD.Cli.csproj" />
+    <Project Path="src/AtlasResourceCRD.Core/AtlasResourceCRD.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AtlasResourceCRD.Tests/AtlasResourceCRD.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore Dependencies
+      run: dotnet restore
+
+    - name: Build & Test
+      run: dotnet test --configuration Release
+
+    - name: Pack CLI Tool
+      run: dotnet pack src/AtlasResourceCRD.Cli/AtlasResourceCRD.Cli.csproj --configuration Release --output nupkg
+
+    - name: Publish CLI Binaries
+      run: dotnet publish src/AtlasResourceCRD.Cli/AtlasResourceCRD.Cli.csproj --configuration Release -r win-x64 --self-contained false -o publish/win-x64
+
+    - name: Zip Windows Binaries
+      run: |
+        cd publish/win-x64
+        zip -r ../../atlas-crd-win-x64.zip .
+        cd ../..
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          atlas-crd-win-x64.zip
+          nupkg/*.nupkg
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

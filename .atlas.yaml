@@ -1,0 +1,16 @@
+# AtlasResource configuration for repository scanning
+name: atlas-resource-crd
+namespace: default
+tier: CLI # Frontend | Backend | CLI | Library | Worker | Gateway
+owner: platform-devops
+
+ignoreGlobs:
+  - "legacy/**"
+  - "docs/archive/**"
+
+labels:
+  app: atlas-resource-crd
+  environment: development
+
+annotations:
+  atlas.io/criticality: medium
