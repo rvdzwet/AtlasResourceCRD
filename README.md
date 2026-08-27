@@ -10,9 +10,16 @@
 - 🗺️ **Map-Reduce Multi-Agent Architecture**:
   - **Map Phase**: Concurrently extracts lightweight semantic summaries across all source files in parallel (`SemaphoreSlim` concurrency control).
   - **Reduce Phase**: Global Architect Agent (Gemini 3.7 Flash + High Thinking with 24k token reasoning budget) merges file summaries, manifests, and git metadata into a unified architectural catalog.
-- ⚡ **Pure Git Blob SHA Caching**:
-  - Computes native Git SHA-1 hashes (`sha1("blob <len>\0<content>")`) stored at `.atlas/cache/files/{sha}.json`.
-  - Unchanged files produce an **instant 100% cache hit** with **0 LLM token consumption** and **<100ms** Map execution.
+- ⚡ **Multi-Tier Git Caching & Instant Reruns**:
+  - **Map Caching**: Git Blob SHA-1 hashes stored at `.atlas/cache/files/{sha}.json`. Unchanged files execute in **<100ms** with **0 LLM tokens**.
+  - **Synthesis & Artifact Caching**: Stores full `AtlasResource` and rendered HTML in `.atlas/cache/synth/latest.json`. Re-running scans without code changes produces an **instant 100% Cache HIT** in **<50ms**.
+- 🔄 **Idempotent Incremental Diff Patching**:
+  - On new commits, Atlas calculates file diffs (added/modified/deleted), summarizes only changed files, and feeds the previous baseline `AtlasResource` + diffs into an incremental delta prompt.
+  - **Topological Stability**: Preserves diagram node IDs, layout structure, and unaffected security/quality findings without flapping or drastic re-writes.
+- 🛡️ **Mermaid AST Linter & Iterative Auto-Repair Loop**:
+  - Validates diagram syntax (balanced subgraphs, bracket matching, arrow escaping, pipe syntax).
+  - Automatically sanitizes common syntax hazards (e.g. `->` inside quotes).
+  - Iterative LLM repair loop auto-corrects broken diagrams with deterministic fallback generators.
 - 🏛️ **Interactive Multi-Diagram Suite (C4 Model)**:
   - **`contextDiagram` (C4 Level 1 System Context)**: Maps End Users, Client Interfaces, Core System Boundaries, External Cloud APIs, and Local Network Hardware.
   - **`componentDiagram` (C4 Level 2/3 Component & Subsystem)**: Visualizes internal modules, controllers, rule engines, and plugin layers with **exact protocol annotations on links** (`HTTP/REST`, `MQTT/mTLS 8883`, `Influx Line Protocol`, `Matter UDP`, `SSE`).
@@ -96,8 +103,9 @@ atlas-crd init
 | `--concurrency <n>` | Concurrent workers for parallel Map phase | `8` |
 | `--max-files <n>` | Max source files to analyze | `unlimited` |
 | `--all-files` | Scan all discovered source files | `true` |
-| `--no-cache` | Disable Git Blob SHA caching | `false` |
+| `--no-cache` | Disable Git Blob SHA and Synthesis caching | `false` |
 | `--clear-cache` | Clear existing `.atlas/cache` before scan | `false` |
+| `--force-synth` | Force fresh global synthesis without incremental diff patching | `false` |
 | `--no-open` | Do not automatically open `atlas.html` in browser | `false` |
 | `-v, --verbose` | Enable debug logging | `false` |
 | `-vv, --trace` | Enable extreme trace logging (prompts, payloads, tokens) | `false` |

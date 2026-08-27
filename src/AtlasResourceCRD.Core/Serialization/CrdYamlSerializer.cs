@@ -51,6 +51,11 @@ public static class CrdYamlSerializer
         return JsonSerializer.Serialize(resource, JsonOptions);
     }
 
+    public static string SerializeJson<T>(T obj)
+    {
+        return JsonSerializer.Serialize(obj, JsonOptions);
+    }
+
     public static AtlasResource DeserializeJson(string jsonContent)
     {
         return JsonSerializer.Deserialize<AtlasResource>(jsonContent, JsonOptions)

@@ -278,8 +278,57 @@ The previously generated software catalog specification failed strict schema val
 === INSTRUCTIONS ===
 Fix the errors identified above and output the complete, corrected JSON specification adhering strictly to the schema rules:
 1. Ensure all 3 Mermaid diagrams (contextDiagram, componentDiagram, dataFlowDiagram) start with a valid header ('flowchart TD' or 'flowchart LR' or 'graph TD').
-2. Ensure metadata, security, and quality sections are populated with valid ratings (SIG stars 1-5, OWASP compliance items).
+2. Ensure metadata, security, quality, and codeReview sections are populated with valid ratings.
 3. Preserve all extracted component facts, endpoints, dependencies, and architecture insights.
 4. Output strictly valid JSON.
+""";
+
+    public const string DiagramRepairPromptTemplate = """
+You are a Mermaid diagram syntax and layout repair expert.
+The following Mermaid architecture diagram failed strict syntax validation:
+
+=== DIAGRAM TYPE ===
+{DIAGRAM_NAME}
+
+=== SYNTAX ERRORS DETECTED ===
+{SYNTAX_ERRORS}
+
+=== BROKEN MERMAID CODE ===
+{BROKEN_DIAGRAM}
+
+=== REPAIR INSTRUCTIONS ===
+1. Correct all syntax errors (unbalanced brackets, unclosed subgraphs, unquoted strings with special characters, raw '->' inside quotes).
+2. Ensure the diagram starts with a valid header (e.g. `flowchart TD` or `flowchart LR`).
+3. Ensure all links use standard pipe format (e.g. `A -->|"Protocol"| B`).
+4. Output ONLY the raw fixed Mermaid diagram code without markdown fences, explanation, or commentary.
+""";
+
+    public const string IncrementalPatchPromptTemplate = """
+You are Atlas, performing an incremental, idempotent architectural update on an existing software catalog specification.
+
+=== BASELINE ATLAS RESOURCE SPECIFICATION ===
+{BASELINE_SPEC_JSON}
+
+=== CODEBASE CHANGES IN CURRENT COMMIT ({GIT_COMMIT}) ===
+
+--- ADDED FILES ({ADDED_COUNT}) ---
+{ADDED_FILES_SUMMARY}
+
+--- MODIFIED FILES ({MODIFIED_COUNT}) ---
+{MODIFIED_FILES_SUMMARY}
+
+--- DELETED FILES ({DELETED_COUNT}) ---
+{DELETED_FILES_SUMMARY}
+
+=== INCREMENTAL UPDATE GUIDELINES ===
+1. **Idempotency & Topology Stability**:
+   - PRESERVE existing Mermaid diagrams (`contextDiagram`, `componentDiagram`, `dataFlowDiagram`) topology, existing node IDs, and relationships unless the file changes explicitly add/remove components, protocols, or data flows.
+   - Do NOT rewrite or reorder unaffected diagrams or components.
+2. **Patch Modified Areas**:
+   - Update API endpoints, models, data stores, dependencies, or configuration if the changed files modified them.
+   - Update security posture and findings if the changes fixed or introduced security risks.
+   - Update code review items and smells if the changes refactored or introduced new patterns.
+3. **Format**:
+   - Output the complete, updated `AtlasResourceSpec` formatted strictly as valid JSON matching the schema.
 """;
 }

@@ -77,12 +77,11 @@ public static class Program
     {
         var targetPath = ".";
         string? outputFile = null;
-        var dryRun = false;
         var model = "gemini-3.7-flash";
         var thinkingLevel = "high";
-        var format = "yaml";
         var disableCache = false;
         var clearCache = false;
+        var forceSynth = false;
         var noOpen = false;
         var concurrency = 8;
         var maxFiles = int.MaxValue;
@@ -134,17 +133,13 @@ public static class Program
             {
                 clearCache = true;
             }
+            else if (arg is "--force-synth" or "--force-reduce")
+            {
+                forceSynth = true;
+            }
             else if (arg is "--no-open")
             {
                 noOpen = true;
-            }
-            else if (arg is "--format" && i + 1 < args.Length)
-            {
-                format = args[++i].ToLowerInvariant();
-            }
-            else if (arg is "--dry-run" or "--test")
-            {
-                dryRun = true;
             }
             else if (!arg.StartsWith("-"))
             {
@@ -171,12 +166,12 @@ public static class Program
         }
 
         logger.LogInformation("================================================================================");
-        logger.LogInformation("AtlasResourceCRD Scanner - Starting Map-Reduce Scan for {Path}", fullPath);
-        logger.LogInformation("Mode: {Mode} | Model: {Model} | Thinking: {ThinkingLevel} ({Tokens} tokens) | Concurrency: {Concurrency}",
-            dryRun ? "TEST / DRY-RUN" : "STANDARD", model, thinkingLevel.ToUpperInvariant(), geminiOptions.ThinkingBudget, concurrency);
+        logger.LogInformation("AtlasResourceCRD Scanner CLI v1.1.0 (Target: {Path})", fullPath);
+        logger.LogInformation("Gemini Model: {Model} | Thinking: {Thinking} | Concurrency: {Concurrency}",
+            model, thinkingLevel, concurrency);
         logger.LogInformation("================================================================================");
 
-        // 1. Pass 1: Static Discovery
+        // 1. Pass 1: Local File Scanning
         var gitExtractor = new GitMetadataExtractor(loggerFactory.CreateLogger<GitMetadataExtractor>());
         var manifestAnalyzer = new ManifestAnalyzer(loggerFactory.CreateLogger<ManifestAnalyzer>());
         var scanner = new RepoScanner(loggerFactory.CreateLogger<RepoScanner>(), manifestAnalyzer, gitExtractor);
@@ -191,14 +186,17 @@ public static class Program
 
         if (clearCache)
         {
-            var cache = new Core.Caching.FileSummaryCache(fullPath, loggerFactory.CreateLogger<Core.Caching.FileSummaryCache>());
-            cache.ClearCache();
+            var fCache = new Core.Caching.FileSummaryCache(fullPath, loggerFactory.CreateLogger<Core.Caching.FileSummaryCache>());
+            fCache.ClearCache();
+            var sCache = new Core.Caching.SynthesisCache(fullPath, loggerFactory.CreateLogger<Core.Caching.SynthesisCache>());
+            sCache.ClearCache();
         }
 
         var pipelineOptions = new AtlasAgentPipelineOptions
         {
             Concurrency = concurrency,
-            DisableCache = disableCache
+            DisableCache = disableCache,
+            ForceSynth = forceSynth
         };
 
         var crd = await pipeline.ExecuteAsync(skeleton, pipelineOptions);
