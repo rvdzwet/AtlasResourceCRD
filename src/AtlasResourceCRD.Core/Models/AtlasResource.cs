@@ -87,6 +87,10 @@ public sealed class AtlasResourceSpec
     [YamlMember(Alias = "quality", Order = 10)]
     [JsonPropertyName("quality")]
     public QualityVerdictSpec Quality { get; set; } = new();
+
+    [YamlMember(Alias = "codeReview", Order = 11)]
+    [JsonPropertyName("codeReview")]
+    public CodeReviewSpec CodeReview { get; set; } = new();
 }
 
 public sealed class ComponentOverview
@@ -604,4 +608,77 @@ public sealed class SigDimensionScore
     [YamlMember(Alias = "evaluation", Order = 3)]
     [JsonPropertyName("evaluation")]
     public string Evaluation { get; set; } = string.Empty;
+}
+
+public sealed class CodeReviewSpec
+{
+    [YamlMember(Alias = "reviewGrade", Order = 1)]
+    [JsonPropertyName("reviewGrade")]
+    public string ReviewGrade { get; set; } = "A"; // A+, A, B, C, D, F
+
+    [YamlMember(Alias = "reviewScore", Order = 2)]
+    [JsonPropertyName("reviewScore")]
+    public int ReviewScore { get; set; } = 90; // 0-100
+
+    [YamlMember(Alias = "summary", Order = 3)]
+    [JsonPropertyName("summary")]
+    public string Summary { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "strengths", Order = 4)]
+    [JsonPropertyName("strengths")]
+    public List<string> Strengths { get; set; } = new();
+
+    [YamlMember(Alias = "codeSmells", Order = 5)]
+    [JsonPropertyName("codeSmells")]
+    public List<CodeSmellItem> CodeSmells { get; set; } = new();
+
+    [YamlMember(Alias = "findings", Order = 6)]
+    [JsonPropertyName("findings")]
+    public List<CodeReviewFinding> Findings { get; set; } = new();
+}
+
+public sealed class CodeSmellItem
+{
+    [YamlMember(Alias = "smellType", Order = 1)]
+    [JsonPropertyName("smellType")]
+    public string SmellType { get; set; } = string.Empty; // e.g. God Class, Dead Code, Long Parameter List, Sync-over-Async
+
+    [YamlMember(Alias = "description", Order = 2)]
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "affectedComponentOrFile", Order = 3)]
+    [JsonPropertyName("affectedComponentOrFile")]
+    public string AffectedComponentOrFile { get; set; } = string.Empty;
+}
+
+public sealed class CodeReviewFinding
+{
+    [YamlMember(Alias = "title", Order = 1)]
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "category", Order = 2)]
+    [JsonPropertyName("category")]
+    public string Category { get; set; } = "Maintainability"; // Architecture, Performance, Maintainability, IdiomaticPractices, Robustness
+
+    [YamlMember(Alias = "severity", Order = 3)]
+    [JsonPropertyName("severity")]
+    public string Severity { get; set; } = "Minor"; // Critical, Major, Minor, Info
+
+    [YamlMember(Alias = "file", Order = 4)]
+    [JsonPropertyName("file")]
+    public string File { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "symbol", Order = 5)]
+    [JsonPropertyName("symbol")]
+    public string Symbol { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "description", Order = 6)]
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [YamlMember(Alias = "recommendation", Order = 7)]
+    [JsonPropertyName("recommendation")]
+    public string Recommendation { get; set; } = string.Empty;
 }

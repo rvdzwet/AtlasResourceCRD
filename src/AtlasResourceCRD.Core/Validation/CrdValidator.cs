@@ -121,6 +121,15 @@ public static class CrdValidator
                     result.Warnings.Add($"SIG maintainability stars '{resource.Spec.Quality.SigStars}' should be between 1.0 and 5.0.");
                 }
             }
+
+            // Code Review Validation
+            if (resource.Spec.CodeReview != null)
+            {
+                if (resource.Spec.CodeReview.ReviewScore < 0 || resource.Spec.CodeReview.ReviewScore > 100)
+                {
+                    result.Warnings.Add($"CodeReviewScore '{resource.Spec.CodeReview.ReviewScore}' should be between 0 and 100.");
+                }
+            }
         }
 
         return result;

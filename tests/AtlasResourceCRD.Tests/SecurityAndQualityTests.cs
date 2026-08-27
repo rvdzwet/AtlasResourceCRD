@@ -101,4 +101,52 @@ public class SecurityAndQualityTests
         html.Should().Contain("4.5 / 5.0");
         html.Should().Contain("UnitComplexity");
     }
+
+    [Fact]
+    public void Generate_ShouldRenderCodeReviewDashboardInHtml()
+    {
+        var resource = new AtlasResource
+        {
+            ApiVersion = "atlas.io/v1alpha1",
+            Kind = "AtlasResource",
+            Metadata = new AtlasResourceMetadata { Name = "reviewed-service" },
+            Spec = new AtlasResourceSpec
+            {
+                ComponentOverview = new ComponentOverview { Name = "reviewed-service", Tier = "Backend" },
+                Architecture = new ArchitectureSpec { ComponentDiagram = "flowchart TD\n  A --> B" },
+                CodeReview = new CodeReviewSpec
+                {
+                    ReviewGrade = "A",
+                    ReviewScore = 94,
+                    Summary = "Exemplary clean architecture with strong domain boundary separation.",
+                    Strengths = new List<string> { "Consistent dependency injection", "Idiomatic asynchronous patterns" },
+                    CodeSmells = new List<CodeSmellItem>
+                    {
+                        new() { SmellType = "Long Parameter List", Description = "DeviceController constructor has 9 parameters", AffectedComponentOrFile = "DeviceController.cs" }
+                    },
+                    Findings = new List<CodeReviewFinding>
+                    {
+                        new()
+                        {
+                            Title = "Extract Parameter Object",
+                            Category = "Maintainability",
+                            Severity = "Minor",
+                            File = "src/Controllers/DeviceController.cs",
+                            Symbol = "DeviceController(..)",
+                            Description = "Constructor has too many parameters.",
+                            Recommendation = "Group parameters into a DeviceControllerOptions object."
+                        }
+                    }
+                }
+            }
+        };
+
+        var html = HtmlVisualizerGenerator.Generate(resource);
+        html.Should().Contain("Automated Code Review & Architectural Insights");
+        html.Should().Contain("Grade: A (94/100)");
+        html.Should().Contain("Consistent dependency injection");
+        html.Should().Contain("Long Parameter List");
+        html.Should().Contain("DeviceController.cs");
+        html.Should().Contain("Extract Parameter Object");
+    }
 }

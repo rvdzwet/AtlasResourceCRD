@@ -18,6 +18,7 @@ public static class HtmlVisualizerGenerator
         var arch = spec.Architecture;
         var sec = spec.Security;
         var qual = spec.Quality;
+        var cr = spec.CodeReview;
         var yaml = CrdYamlSerializer.SerializeYaml(resource);
 
         var contextDiagram = SanitizeMermaidDiagram(!string.IsNullOrWhiteSpace(arch.ContextDiagram) ? arch.ContextDiagram : arch.MermaidDiagram);
@@ -55,6 +56,10 @@ public static class HtmlVisualizerGenerator
         if (qual != null && qual.SigStars > 0)
         {
             sb.AppendLine($"        <span class=\"badge qual-badge\">⭐ SIG: {qual.SigStars.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}★</span>");
+        }
+        if (cr != null && !string.IsNullOrWhiteSpace(cr.ReviewGrade))
+        {
+            sb.AppendLine($"        <span class=\"badge cr-badge\">🔍 Review: {HttpUtility.HtmlEncode(cr.ReviewGrade)} ({cr.ReviewScore}/100)</span>");
         }
         sb.AppendLine("      </div>");
         sb.AppendLine("      <div class=\"nav-meta\">");
@@ -264,6 +269,96 @@ public static class HtmlVisualizerGenerator
         sb.AppendLine("        </div>");
         sb.AppendLine("      </div>");
         sb.AppendLine("    </section>");
+
+        // Automated Code Review & Architectural Insights Card
+        if (cr != null && (!string.IsNullOrWhiteSpace(cr.Summary) || cr.Findings.Count > 0 || cr.Strengths.Count > 0))
+        {
+            var crGradeClass = cr.ReviewGrade.StartsWith("A") ? "grade-a" : (cr.ReviewGrade.StartsWith("B") ? "grade-b" : "grade-c");
+            sb.AppendLine("    <section class=\"card full-card code-review-card\">");
+            sb.AppendLine("      <div class=\"card-header\">");
+            sb.AppendLine("        <div class=\"header-left\">");
+            sb.AppendLine("          <h2>🔍 Automated Code Review & Architectural Insights</h2>");
+            sb.AppendLine($"          <span class=\"cr-grade-pill {crGradeClass}\">Grade: {HttpUtility.HtmlEncode(cr.ReviewGrade)} ({cr.ReviewScore}/100)</span>");
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+
+            if (!string.IsNullOrWhiteSpace(cr.Summary))
+            {
+                sb.AppendLine($"      <p class=\"cr-summary\">{HttpUtility.HtmlEncode(cr.Summary)}</p>");
+            }
+
+            sb.AppendLine("      <div class=\"grid-2\" style=\"margin-bottom: 1.25rem;\">");
+
+            // Strengths
+            if (cr.Strengths.Count > 0)
+            {
+                sb.AppendLine("        <div class=\"cr-strengths-box\">");
+                sb.AppendLine("          <h4>✨ Architectural Strengths & Modern Idioms:</h4>");
+                sb.AppendLine("          <ul>");
+                foreach (var st in cr.Strengths)
+                {
+                    sb.AppendLine($"            <li>• {HttpUtility.HtmlEncode(st)}</li>");
+                }
+                sb.AppendLine("          </ul>");
+                sb.AppendLine("        </div>");
+            }
+
+            // Code Smells
+            if (cr.CodeSmells.Count > 0)
+            {
+                sb.AppendLine("        <div class=\"cr-smells-box\">");
+                sb.AppendLine("          <h4>⚠️ Anti-Patterns & Code Smells Detected:</h4>");
+                sb.AppendLine("          <div class=\"cr-smells-list\">");
+                foreach (var smell in cr.CodeSmells)
+                {
+                    sb.AppendLine("            <div class=\"cr-smell-item\">");
+                    sb.AppendLine($"              <div class=\"smell-title\"><strong>{HttpUtility.HtmlEncode(smell.SmellType)}</strong> <code class=\"smell-target\">{HttpUtility.HtmlEncode(smell.AffectedComponentOrFile)}</code></div>");
+                    sb.AppendLine($"              <p class=\"smell-desc\">{HttpUtility.HtmlEncode(smell.Description)}</p>");
+                    sb.AppendLine("            </div>");
+                }
+                sb.AppendLine("          </div>");
+                sb.AppendLine("        </div>");
+            }
+
+            sb.AppendLine("      </div>");
+
+            // Findings Table
+            if (cr.Findings.Count > 0)
+            {
+                sb.AppendLine("      <div class=\"card-header\" style=\"margin-top: 0.5rem;\">");
+                sb.AppendLine($"        <h3>Detailed Review Findings ({cr.Findings.Count})</h3>");
+                sb.AppendLine("        <input type=\"text\" id=\"crSearch\" class=\"search-input\" placeholder=\"Filter code review findings (e.g. Performance, Controller)...\" onkeyup=\"filterCrTable()\">");
+                sb.AppendLine("      </div>");
+                sb.AppendLine("      <div class=\"table-responsive\">");
+                sb.AppendLine("        <table class=\"data-table\" id=\"crTable\">");
+                sb.AppendLine("          <thead>");
+                sb.AppendLine("            <tr><th>Severity</th><th>Category</th><th>Target File / Symbol</th><th>Observation</th><th>Recommended Action</th></tr>");
+                sb.AppendLine("          </thead>");
+                sb.AppendLine("          <tbody>");
+                foreach (var f in cr.Findings)
+                {
+                    var sevClass = f.Severity.ToLowerInvariant() switch
+                    {
+                        "critical" => "sev-critical",
+                        "major" => "sev-high",
+                        "minor" => "sev-medium",
+                        _ => "sev-low"
+                    };
+                    sb.AppendLine("            <tr>");
+                    sb.AppendLine($"              <td><span class=\"badge sev-badge {sevClass}\">{HttpUtility.HtmlEncode(f.Severity)}</span></td>");
+                    sb.AppendLine($"              <td><span class=\"tech-tag\" style=\"font-size:0.75rem;\">{HttpUtility.HtmlEncode(f.Category)}</span></td>");
+                    sb.AppendLine($"              <td><code>{HttpUtility.HtmlEncode(f.File)}</code>{(string.IsNullOrWhiteSpace(f.Symbol) ? "" : $"<br><small style=\"color:var(--accent-blue);\">{HttpUtility.HtmlEncode(f.Symbol)}</small>")}</td>");
+                    sb.AppendLine($"              <td><strong>{HttpUtility.HtmlEncode(f.Title)}</strong><br><span style=\"font-size:0.8rem; color:var(--text-secondary);\">{HttpUtility.HtmlEncode(f.Description)}</span></td>");
+                    sb.AppendLine($"              <td style=\"color:#34d399; font-size:0.85rem;\">{HttpUtility.HtmlEncode(f.Recommendation)}</td>");
+                    sb.AppendLine("            </tr>");
+                }
+                sb.AppendLine("          </tbody>");
+                sb.AppendLine("        </table>");
+                sb.AppendLine("      </div>");
+            }
+
+            sb.AppendLine("    </section>");
+        }
 
         // Grid: Components Detail & Tech Stack
         sb.AppendLine("    <div class=\"grid-2\">");
@@ -585,6 +680,7 @@ body {
 .lang-badge { background: #10b98120; color: #34d399; border: 1px solid #10b98140; }
 .sec-badge { background: #10b98125; color: #34d399; border: 1px solid #10b98150; font-weight: 700; }
 .qual-badge { background: #f59e0b25; color: #fbbf24; border: 1px solid #f59e0b50; font-weight: 700; }
+.cr-badge { background: #6366f125; color: #a5b4fc; border: 1px solid #6366f150; font-weight: 700; }
 .pattern-badge { background: #8b5cf620; color: #c084fc; border: 1px solid #8b5cf640; }
 .crit-badge { background: #f59e0b20; color: #fbbf24; border: 1px solid #f59e0b40; font-size: 0.7rem; }
 .comp-badge { background: #06b6d420; color: #22d3ee; border: 1px solid #06b6d440; font-size: 0.7rem; }
@@ -648,6 +744,23 @@ body {
 .owasp-ref { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; background: #0f172a; padding: 0.1rem 0.3rem; border-radius: 4px; color: #38bdf8; }
 .finding-desc { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.2rem; }
 .finding-mitigation { font-size: 0.8rem; color: #34d399; }
+
+/* Code Review Card */
+.cr-grade-pill { font-size: 0.85rem; font-weight: 800; padding: 0.35rem 0.8rem; border-radius: 9999px; }
+.cr-grade-pill.grade-a { background: #6366f125; color: #a5b4fc; border: 1px solid #6366f150; }
+.cr-grade-pill.grade-b { background: #06b6d425; color: #67e8f9; border: 1px solid #06b6d450; }
+.cr-grade-pill.grade-c { background: #f59e0b25; color: #fbbf24; border: 1px solid #f59e0b50; }
+.cr-summary { color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 1.25rem; }
+.cr-strengths-box { background: #064e3b20; border: 1px solid #065f46; border-radius: 10px; padding: 1rem; }
+.cr-strengths-box h4 { color: #34d399; margin-bottom: 0.5rem; font-size: 0.9rem; }
+.cr-strengths-box ul { list-style: none; display: flex; flex-direction: column; gap: 0.35rem; color: #a7f3d0; font-size: 0.85rem; }
+.cr-smells-box { background: #78350f20; border: 1px solid #854d0e; border-radius: 10px; padding: 1rem; }
+.cr-smells-box h4 { color: #fbbf24; margin-bottom: 0.5rem; font-size: 0.9rem; }
+.cr-smells-list { display: flex; flex-direction: column; gap: 0.5rem; max-height: 220px; overflow-y: auto; }
+.cr-smell-item { background: #0f172a; padding: 0.5rem 0.75rem; border-radius: 6px; border-left: 3px solid #f59e0b; }
+.smell-title { font-size: 0.85rem; margin-bottom: 0.2rem; display: flex; justify-content: space-between; align-items: center; }
+.smell-target { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; background: #1e293b; padding: 0.1rem 0.3rem; border-radius: 4px; color: #38bdf8; }
+.smell-desc { font-size: 0.8rem; color: var(--text-secondary); }
 
 /* Diagram Tabs & Viewport */
 .diagram-tabs { display: flex; gap: 0.4rem; background: #0f172a; padding: 0.3rem; border-radius: 10px; border: 1px solid var(--border-color); }
@@ -928,6 +1041,16 @@ function filterApiTable() {
   }
 }
 
+// Search Code Review table
+function filterCrTable() {
+  var input = document.getElementById('crSearch').value.toUpperCase();
+  var trs = document.getElementById('crTable').getElementsByTagName('tr');
+  for (var i = 1; i < trs.length; i++) {
+    var text = trs[i].textContent || trs[i].innerText;
+    trs[i].style.display = text.toUpperCase().indexOf(input) > -1 ? '' : 'none';
+  }
+}
+
 // Copy CRD YAML
 function copyCrdYaml() {
   var text = document.getElementById('crdYamlCode').innerText;
@@ -950,7 +1073,7 @@ function closeDrawer() {
   document.getElementById('inspectorDrawer').classList.remove('open');
 }
 
-// Startup
+// Initial render
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', function() {
     renderPane('diag-component');

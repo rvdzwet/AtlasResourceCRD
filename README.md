@@ -23,11 +23,16 @@
 - ⭐ **SIG / ISO 25010 Quality Verdict**:
   - 5-Star Maintainability scorecard evaluating **Volume**, **Component Independence**, **Unit Complexity**, **Testability**, and **Architecture Consistency**.
   - Identifies concrete Technical Debt and refactoring action items.
+- 🔍 **Automated Architectural & Code Review**:
+  - Overall **Review Grade** (`A+`, `A`, `B`...) and score (`0-100`).
+  - Highlights **Architectural Strengths & Modern Idioms** executed cleanly.
+  - Detects **Anti-Patterns & Code Smells** (e.g. God classes, sync-over-async, tight coupling, improper disposal).
+  - Prioritized **Review Findings Table** with file/symbol links, severity tags (`Critical`, `Major`, `Minor`, `Info`), observations, and concrete refactoring advice.
 - 🖥️ **Interactive Fullscreen HTML Visualizer**:
   - Standalone, zero-dependency `atlas.html` dashboard with live client-side Mermaid rendering.
   - **Fullscreen Modal Viewport** with smooth mouse-wheel zooming and drag-to-pan.
   - **Interactive Component Inspector Drawer**: Click any node to inspect responsibilities and active contracts.
-  - **Searchable API Table & 1-Click CRD YAML Copy**.
+  - **Filterable Code Review & API Tables & 1-Click CRD YAML Copy**.
   - **Auto-Browser Launch**: Automatically opens the generated dashboard in your default browser.
 - 📜 **Kubernetes CRD & Backstage Standardized**:
   - Outputs compliant `atlas.io/v1alpha1` Kubernetes manifests validated against RFC-1123 DNS naming rules.
@@ -69,6 +74,9 @@ atlas-crd scan . -k <API_KEY> --no-open -o catalog/atlas.yaml
 
 # Validate an existing CRD manifest
 atlas-crd validate atlas.yaml
+
+# Render / regenerate interactive HTML dashboard from existing CRD manifest
+atlas-crd html atlas.yaml
 
 # Generate the Kubernetes CustomResourceDefinition schema
 atlas-crd schema k8s/atlas-crd-definition.yaml

@@ -25,7 +25,12 @@ Guidelines:
 5. Perform a SIG (Software Improvement Group) & ISO 25010 Quality Verdict:
    - Evaluate the 5 core maintainability dimensions on a 1 to 5 star scale: Volume, Component Independence, Unit Complexity, Testability, and Architecture Consistency.
    - Calculate overall SIG Stars (e.g. 4.5) and list prioritized technical debt items.
-6. Classify APIs, events, dependencies, environment variables, databases, and observability mechanisms meticulously.
+6. Perform an Automated Architectural & Code Review:
+   - Identify key strengths and modern architectural patterns executed well.
+   - Detect anti-patterns and code smells (e.g. God classes, sync-over-async, tight coupling, hardcoded values).
+   - Generate prioritized code review findings with concrete file/symbol references and actionable recommendations.
+   - Assign an overall Code Review Grade (A+, A, B, C, D, F) and score (0-100).
+7. Classify APIs, events, dependencies, environment variables, databases, and observability mechanisms meticulously.
 """;
 
     public const string ExtractionPromptTemplate = """
@@ -233,6 +238,30 @@ Return a single JSON object matching this exact schema:
     ],
     "summary": "string (executive maintainability verdict)",
     "techDebtItems": ["string"]
+  },
+  "codeReview": {
+    "reviewGrade": "A+ | A | B | C | D | F",
+    "reviewScore": 90,
+    "summary": "string (executive code review summary)",
+    "strengths": ["string"],
+    "codeSmells": [
+      {
+        "smellType": "string (e.g. God Class, Dead Code, Long Parameter List, Sync-over-Async)",
+        "description": "string",
+        "affectedComponentOrFile": "string"
+      }
+    ],
+    "findings": [
+      {
+        "title": "string",
+        "category": "Architecture | Performance | Maintainability | IdiomaticPractices | Robustness",
+        "severity": "Critical | Major | Minor | Info",
+        "file": "string",
+        "symbol": "string",
+        "description": "string",
+        "recommendation": "string"
+      }
+    ]
   }
 }
 """;
