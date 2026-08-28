@@ -64,8 +64,11 @@ public sealed class FileSummaryCache
         PropertyNameCaseInsensitive = true
     };
 
-    public int CacheHits { get; private set; }
-    public int CacheMisses { get; private set; }
+    private int _cacheHits;
+    private int _cacheMisses;
+
+    public int CacheHits => Volatile.Read(ref _cacheHits);
+    public int CacheMisses => Volatile.Read(ref _cacheMisses);
 
     public FileSummaryCache(string repoRoot, ILogger<FileSummaryCache> logger, bool disabled = false, string? customCacheDir = null)
     {
@@ -86,7 +89,7 @@ public sealed class FileSummaryCache
         var filePath = GetCacheFilePath(gitBlobSha);
         if (!File.Exists(filePath))
         {
-            CacheMisses++;
+            Interlocked.Increment(ref _cacheMisses);
             _logger.LogTrace("[FileSummaryCache] Cache MISS for Git Blob SHA: {Sha}", gitBlobSha);
             return null;
         }
@@ -97,7 +100,7 @@ public sealed class FileSummaryCache
             var summary = JsonSerializer.Deserialize<FileSummary>(json, JsonOptions);
             if (summary != null)
             {
-                CacheHits++;
+                Interlocked.Increment(ref _cacheHits);
                 _logger.LogTrace("[FileSummaryCache] Cache HIT for {Path} (Git SHA: {Sha})", summary.RelativePath, gitBlobSha);
                 return summary;
             }
@@ -107,7 +110,7 @@ public sealed class FileSummaryCache
             _logger.LogWarning(ex, "[FileSummaryCache] Failed to read cached summary for SHA: {Sha}", gitBlobSha);
         }
 
-        CacheMisses++;
+        Interlocked.Increment(ref _cacheMisses);
         return null;
     }
 

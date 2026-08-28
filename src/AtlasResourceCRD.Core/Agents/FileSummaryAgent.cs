@@ -77,6 +77,10 @@ Analyze this source code file deeply and extract structured functional, architec
                 SecurityAndQualityNotes = parsed?.SecurityAndQualityNotes ?? new List<string>()
             };
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[FileSummaryAgent] Failed to summarize {Path} via LLM, creating heuristic fallback summary.", file.RelativePath);

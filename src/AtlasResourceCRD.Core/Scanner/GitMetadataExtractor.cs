@@ -99,8 +99,24 @@ public sealed class GitMetadataExtractor
         using var process = Process.Start(psi);
         if (process == null) return null;
 
-        var output = process.StandardOutput.ReadToEnd();
-        process.WaitForExit(3000);
-        return process.ExitCode == 0 ? output : null;
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
+
+        if (process.WaitForExit(3000))
+        {
+            var output = outputTask.GetAwaiter().GetResult();
+            return process.ExitCode == 0 ? output : null;
+        }
+
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+            // Ignore failure to terminate process
+        }
+
+        return null;
     }
 }
