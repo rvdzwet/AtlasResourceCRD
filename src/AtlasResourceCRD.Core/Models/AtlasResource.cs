@@ -615,7 +615,7 @@ public sealed class SigDimensionScore
 
     [YamlMember(Alias = "stars", Order = 2)]
     [JsonPropertyName("stars")]
-    public int Stars { get; set; } = 4; // 1-5
+    public double Stars { get; set; } = 4.0; // 1.0 - 5.0
 
     [YamlMember(Alias = "evaluation", Order = 3)]
     [JsonPropertyName("evaluation")]
