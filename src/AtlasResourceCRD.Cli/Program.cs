@@ -166,7 +166,7 @@ public static class Program
         }
 
         logger.LogInformation("================================================================================");
-        logger.LogInformation("AtlasResourceCRD Scanner CLI v1.5.0 (Target: {Path})", fullPath);
+        logger.LogInformation("AtlasResourceCRD Scanner CLI v1.6.0 (Target: {Path})", fullPath);
         logger.LogInformation("Gemini Model: {Model} | Thinking: {Thinking} | Concurrency: {Concurrency}",
             model, thinkingLevel, concurrency);
         logger.LogInformation("================================================================================");

@@ -553,6 +553,16 @@ public sealed class AtlasAgentPipeline
                 summariesSb.AppendLine($"- **Dependencies**: {string.Join(", ", s.KeyDependencies)}");
             if (s.ConfigsOrEnvVars.Count > 0)
                 summariesSb.AppendLine($"- **Configs/Env**: {string.Join(", ", s.ConfigsOrEnvVars)}");
+            if (s.BusinessLogicAndInvariants.Count > 0)
+                summariesSb.AppendLine($"- **Business Logic & Rules**: {string.Join("; ", s.BusinessLogicAndInvariants)}");
+            if (s.InputOutputContracts.Count > 0)
+                summariesSb.AppendLine($"- **Data Contracts & Schemas**: {string.Join("; ", s.InputOutputContracts)}");
+            if (s.ErrorAndExceptionHandling.Count > 0)
+                summariesSb.AppendLine($"- **Exception Handling & Fallbacks**: {string.Join("; ", s.ErrorAndExceptionHandling)}");
+            if (s.StateMutationsAndEvents.Count > 0)
+                summariesSb.AppendLine($"- **State Mutations & Events**: {string.Join("; ", s.StateMutationsAndEvents)}");
+            if (s.SecurityAndQualityNotes.Count > 0)
+                summariesSb.AppendLine($"- **Security & Code Smells**: {string.Join("; ", s.SecurityAndQualityNotes)}");
             summariesSb.AppendLine();
         }
 

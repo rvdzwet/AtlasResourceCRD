@@ -30,25 +30,30 @@ public sealed class FileSummaryAgent
         _logger.LogTrace("[FileSummaryAgent] Summarizing file: {Path} (Category: {Category})", file.RelativePath, file.Category);
 
         var prompt = $$"""
-Analyze this source code file and return a concise semantic summary matching this JSON schema:
+Analyze this source code file deeply and extract structured functional, architectural, and security facts matching this JSON schema:
 
 {
-  "purpose": "Brief sentence explaining what this file accomplishes",
-  "primaryAbstractions": ["Main classes, interfaces, records, or functions defined in this file"],
-  "keyDependencies": ["Key external libraries, APIs, or internal packages used"],
-  "endpointsOrRoutes": ["Any HTTP/API routes or event topics defined in this file (e.g. GET /api/items), or empty list"],
-  "configsOrEnvVars": ["Any configuration keys or environment variables read in this file, or empty list"]
+  "purpose": "Precise sentence explaining the core purpose and domain role of this file",
+  "primaryAbstractions": ["Main classes, interfaces, records, structs, or key functions defined in this file"],
+  "keyDependencies": ["External packages, internal service dependencies, or remote APIs used"],
+  "endpointsOrRoutes": ["Any HTTP/API routes (e.g. 'POST /api/commands'), MQTT topics, WebSocket hubs, or event subscriptions"],
+  "configsOrEnvVars": ["Configuration settings, connection strings, or environment variables referenced"],
+  "businessLogicAndInvariants": ["Key business calculations, mathematical equations, invariant rules, thresholds, or domain policies executed in this code"],
+  "inputOutputContracts": ["Method signatures, parameter types, payload schemas, return types, or data structures accepted/produced"],
+  "errorAndExceptionHandling": ["Exception handling blocks, timeout configurations, retry policies, or fallback mechanisms"],
+  "stateMutationsAndEvents": ["Database writes/queries, cache updates, state changes, or CloudEvents/domain events published"],
+  "securityAndQualityNotes": ["Line-level security observations, missing authentication, anti-patterns, sync-over-async blocking, or code smells"]
 }
 
 --- FILE: {{file.RelativePath}} (Category: {{file.Category}}) ---
-{{(file.Content.Length > 4000 ? file.Content.Substring(0, 4000) + "\n...[truncated]..." : file.Content)}}
+{{(file.Content.Length > 12000 ? file.Content.Substring(0, 12000) + "\n...[truncated]..." : file.Content)}}
 """;
 
         try
         {
             var rawJson = await _geminiClient.GenerateContentAsync(
                 prompt,
-                "You are an expert code summarizer. Output strictly JSON.",
+                "You are an expert deep code analyzer and reverse engineer. Output strictly JSON.",
                 enforceJson: true,
                 cancellationToken: cancellationToken);
 
@@ -64,7 +69,12 @@ Analyze this source code file and return a concise semantic summary matching thi
                 PrimaryAbstractions = parsed?.PrimaryAbstractions ?? new List<string>(),
                 KeyDependencies = parsed?.KeyDependencies ?? new List<string>(),
                 EndpointsOrRoutes = parsed?.EndpointsOrRoutes ?? new List<string>(),
-                ConfigsOrEnvVars = parsed?.ConfigsOrEnvVars ?? new List<string>()
+                ConfigsOrEnvVars = parsed?.ConfigsOrEnvVars ?? new List<string>(),
+                BusinessLogicAndInvariants = parsed?.BusinessLogicAndInvariants ?? new List<string>(),
+                InputOutputContracts = parsed?.InputOutputContracts ?? new List<string>(),
+                ErrorAndExceptionHandling = parsed?.ErrorAndExceptionHandling ?? new List<string>(),
+                StateMutationsAndEvents = parsed?.StateMutationsAndEvents ?? new List<string>(),
+                SecurityAndQualityNotes = parsed?.SecurityAndQualityNotes ?? new List<string>()
             };
         }
         catch (Exception ex)
@@ -97,5 +107,20 @@ Analyze this source code file and return a concise semantic summary matching thi
 
         [JsonPropertyName("configsOrEnvVars")]
         public List<string>? ConfigsOrEnvVars { get; set; }
+
+        [JsonPropertyName("businessLogicAndInvariants")]
+        public List<string>? BusinessLogicAndInvariants { get; set; }
+
+        [JsonPropertyName("inputOutputContracts")]
+        public List<string>? InputOutputContracts { get; set; }
+
+        [JsonPropertyName("errorAndExceptionHandling")]
+        public List<string>? ErrorAndExceptionHandling { get; set; }
+
+        [JsonPropertyName("stateMutationsAndEvents")]
+        public List<string>? StateMutationsAndEvents { get; set; }
+
+        [JsonPropertyName("securityAndQualityNotes")]
+        public List<string>? SecurityAndQualityNotes { get; set; }
     }
 }

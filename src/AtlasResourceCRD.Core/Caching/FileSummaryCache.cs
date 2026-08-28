@@ -33,6 +33,21 @@ public sealed class FileSummary
     [JsonPropertyName("configsOrEnvVars")]
     public List<string> ConfigsOrEnvVars { get; set; } = new();
 
+    [JsonPropertyName("businessLogicAndInvariants")]
+    public List<string> BusinessLogicAndInvariants { get; set; } = new();
+
+    [JsonPropertyName("inputOutputContracts")]
+    public List<string> InputOutputContracts { get; set; } = new();
+
+    [JsonPropertyName("errorAndExceptionHandling")]
+    public List<string> ErrorAndExceptionHandling { get; set; } = new();
+
+    [JsonPropertyName("stateMutationsAndEvents")]
+    public List<string> StateMutationsAndEvents { get; set; } = new();
+
+    [JsonPropertyName("securityAndQualityNotes")]
+    public List<string> SecurityAndQualityNotes { get; set; } = new();
+
     [JsonPropertyName("summarizedAt")]
     public DateTime SummarizedAt { get; set; } = DateTime.UtcNow;
 }

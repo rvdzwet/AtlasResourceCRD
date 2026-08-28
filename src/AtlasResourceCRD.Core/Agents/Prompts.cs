@@ -86,11 +86,13 @@ Remote URL: {GIT_REMOTE}
 === README DOCUMENTATION ===
 {README_SNIPPET}
 
-=== SOURCE FILE SUMMARIES (MAP PHASE) ===
+=== SOURCE FILE DEEP SEMANTIC BLUEPRINTS (MAP PHASE) ===
 {SOURCE_FILES_SNIPPET}
 
 === INSTRUCTIONS ===
-Return a single JSON object matching this exact schema:
+1. Synthesize the rich per-file Business Logic & Rules, Data Contracts & Schemas, Exception Handling & Fallbacks, State Mutations, and Security/Smell findings into a deeply detailed, exhaustive specification.
+2. Ensure every Functional Use-Case in `functionalSpecs.useCases` contains precise parameter types/ranges in `inputDataContracts`, step-by-step algorithms in `mainFlow`, concrete error/retry behavior in `alternativeAndExceptionFlows`, mathematical/policy guardrails in `businessRules`, exact state changes in `outputStateChanges`, BDD Given-When-Then scenarios in `acceptanceScenarios`, and actionable `architecturalAdvice`.
+3. Return a single JSON object matching this exact schema:
 
 {
   "componentOverview": {

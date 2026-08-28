@@ -37,10 +37,10 @@
   - **1-Click High-Res Export**: Instant download of rendered diagrams to vector **SVG** and **PNG** for design reviews and Confluence.
   - **Node Spotlight on Hover**: Dims unrelated nodes to clearly trace connected communication links and protocols.
   - **`contextDiagram` (C4 Level 1)**, **`componentDiagram` (C4 Level 2/3)**, and **`dataFlowDiagram` (Lifecycle)**.
-- ⚡ **High-Throughput Parallelism & Strict Sequential Output Pipeline**:
-  - Parallel Map Phase scaling up to **16 concurrent workers** for fast file analysis.
+- ⚡ **Deep Semantic Map Phase & High-Throughput Parallelism**:
+  - **Deep Semantic Map Extraction (16x Concurrent Workers)**: Inspects files up to 12,000 characters to extract concrete domain calculations, parameter data contracts, error branches/timeouts, database mutations, and line-level code smells.
   - **Strict 2-Step Sequential Pipeline**: Guarantees `atlas.yaml` is written and flushed to disk first, then deserialized sequentially to generate `atlas.html` with 100% deterministic parity.
-  - Multi-Tier Git Blob SHA caching + Synthesis Artifact Caching for **<50ms instant cache hits**.
+  - **Git Blob SHA + Synthesis Artifact Caching**: Permanent per-commit caching for **<50ms instant cache hits** on unchanged files.
 - 🚨 **Exhaustive Executive Risk Assessment & Blast Radius**:
   - Uncompromising, critical principal auditor persona designed specifically for **high-security, air-gapped, and regulated environments**.
   - **Production Readiness Verdict**: 🟢 `Approved`, 🟡 `Conditional`, or 🔴 `Blocked`.
