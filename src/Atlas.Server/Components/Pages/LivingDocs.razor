@@ -1,0 +1,356 @@
+@page "/living-docs"
+@rendermode InteractiveServer
+@inject SpecDocumentRepository SpecRepo
+@inject VendorRfpExportService RfpService
+@inject IJSRuntime JS
+
+<PageTitle>Engineering Rebuild Blueprint & Living Specs - Atlas</PageTitle>
+
+<!-- Header in Clean SaaS Card -->
+<div class="saas-card" style="margin-bottom: 1.5rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h1 class="saas-card-title" style="font-size: 1.65rem;">
+                📖 Engineering Rebuild Blueprint & Living Specs Studio
+            </h1>
+            <p style="color: var(--text-secondary); margin-top: 0.25rem; font-size: 0.92rem;">
+                Comprehensive functional specifications, use cases, domain state machines, business formulas, and data dictionaries ready for software engineers and external vendors across @SpecRepo.TotalServicesCount.ToString("N0") services.
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+            <button class="sidebar-action-btn" style="margin: 0; padding: 0.55rem 1.15rem; font-size: 0.85rem;" @onclick="ExportRfpAsync" disabled="@(_currentResource == null)">
+                📥 Export Vendor RFP (.md)
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Service Selector & Perspective Switcher Card -->
+<div class="saas-card" style="padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        
+        <!-- Service Typeahead Picker -->
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <strong style="color: var(--text-main); font-size: 0.92rem; min-width: 110px;">Active Service:</strong>
+            <ServiceSearchSelect SelectedService="@_selectedServiceName"
+                                 SelectedServiceChanged="OnServiceChanged"
+                                 Placeholder="Select a service to inspect..."
+                                 MaxWidth="360px" />
+        </div>
+
+        <!-- Blueprint Section Switcher -->
+        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+            <button class="saas-filter-pill @(_activeSection == "usecases" ? "active" : "")" @onclick='() => _activeSection = "usecases"'>
+                📋 Use Cases
+            </button>
+            <button class="saas-filter-pill @(_activeSection == "statemachines" ? "active" : "")" @onclick='() => _activeSection = "statemachines"'>
+                🔄 State Machines
+            </button>
+            <button class="saas-filter-pill @(_activeSection == "formulas" ? "active" : "")" @onclick='() => _activeSection = "formulas"'>
+                📐 Formulas & Rules
+            </button>
+            <button class="saas-filter-pill @(_activeSection == "dictionary" ? "active" : "")" @onclick='() => _activeSection = "dictionary"'>
+                🗄️ Data Dictionary
+            </button>
+            <button class="saas-filter-pill @(_activeSection == "invariants" ? "active" : "")" @onclick='() => _activeSection = "invariants"'>
+                🛡️ Invariants
+            </button>
+        </div>
+    </div>
+</div>
+
+@if (_currentResource != null)
+{
+    var fn = _currentResource.Spec?.FunctionalSpecs;
+    if (fn != null)
+    {
+        <div class="saas-card" style="margin-bottom: 2rem;">
+            <div class="saas-card-header">
+                <div>
+                    <h2 class="saas-card-title" style="font-size: 1.25rem;">
+                        📦 @_currentResource.Metadata.Name — Rebuild Specification
+                    </h2>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                        Tier: @(_currentResource.Spec?.ComponentOverview?.Tier ?? "Backend") | 
+                        Language: @(_currentResource.Spec?.TechStack?.PrimaryLanguage ?? "C#") |
+                        Domain: @(SpecRepo.GetSummary(_currentResource.Metadata.Name)?.Domain ?? "Platform")
+                    </div>
+                </div>
+                <a href="/catalog/@_currentResource.Metadata.Name" class="saas-filter-pill" style="text-decoration: none;">
+                    Open Service Overview ➔
+                </a>
+            </div>
+
+            <!-- SECTION A: USE CASES -->
+            @if (_activeSection == "usecases")
+            {
+                <div style="margin-top: 1rem;">
+                    <h3 style="font-size: 1.1rem; color: var(--text-main); font-weight: 700; margin-bottom: 1rem;">
+                        📋 Functional Use Cases (@(fn.UseCases?.Count ?? 0))
+                    </h3>
+
+                    @if (fn.UseCases == null || fn.UseCases.Count == 0)
+                    {
+                        <div style="color: var(--text-muted); padding: 1.5rem; text-align: center;">
+                            No use cases synthesized for this microservice yet.
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 1rem;">
+                            @foreach (var uc in fn.UseCases)
+                            {
+                                <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 10px; padding: 1.25rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <h4 style="font-size: 1.05rem; font-weight: 800; color: var(--primary-purple); margin: 0;">
+                                            @uc.Id: @uc.Title
+                                        </h4>
+                                        <span class="badge-clean-purple">Primary Actor: @uc.PrimaryActor</span>
+                                    </div>
+                                    <p style="color: var(--text-main); font-size: 0.9rem; margin-bottom: 0.75rem;">
+                                        @uc.BusinessValue
+                                    </p>
+
+                                    @if (uc.MainFlow != null && uc.MainFlow.Count > 0)
+                                    {
+                                        <div style="background: var(--bg-card); border-radius: 6px; padding: 0.75rem 1rem; margin-top: 0.5rem;">
+                                            <strong style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Execution Flow:</strong>
+                                            <ol style="margin: 0.35rem 0 0 1.2rem; padding: 0; font-size: 0.86rem; color: var(--text-main);">
+                                                @foreach (var step in uc.MainFlow)
+                                                {
+                                                    <li style="margin-bottom: 0.25rem;">@step</li>
+                                                }
+                                            </ol>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- SECTION B: STATE MACHINES -->
+            @if (_activeSection == "statemachines")
+            {
+                <div style="margin-top: 1rem;">
+                    <h3 style="font-size: 1.1rem; color: var(--text-main); font-weight: 700; margin-bottom: 1rem;">
+                        🔄 Domain Lifecycle State Machines (@(fn.StateMachines?.Count ?? 0))
+                    </h3>
+
+                    @if (fn.StateMachines == null || fn.StateMachines.Count == 0)
+                    {
+                        <div style="color: var(--text-muted); padding: 1.5rem; text-align: center;">
+                            No state machines defined for this service.
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 1rem;">
+                            @foreach (var sm in fn.StateMachines)
+                            {
+                                <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 10px; padding: 1.25rem;">
+                                    <h4 style="font-size: 1.05rem; font-weight: 800; color: var(--primary-purple); margin: 0 0 0.5rem 0;">
+                                        @sm.EntityName State Machine
+                                    </h4>
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                                        <strong>Valid States:</strong> @string.Join(" ➔ ", sm.States ?? new List<string>())
+                                    </div>
+                                    <pre style="background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-subtle); padding: 1rem; border-radius: 8px; font-size: 0.82rem; overflow-x: auto; font-family: monospace; margin: 0;"><code>@sm.MermaidDiagram</code></pre>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- SECTION C: BUSINESS FORMULAS -->
+            @if (_activeSection == "formulas")
+            {
+                <div style="margin-top: 1rem;">
+                    <h3 style="font-size: 1.1rem; color: var(--text-main); font-weight: 700; margin-bottom: 1rem;">
+                        📐 Business Formulas & Exact Calculation Rules (@(fn.BusinessRulesAndFormulas?.Count ?? 0))
+                    </h3>
+
+                    @if (fn.BusinessRulesAndFormulas == null || fn.BusinessRulesAndFormulas.Count == 0)
+                    {
+                        <div style="color: var(--text-muted); padding: 1.5rem; text-align: center;">
+                            No business formulas defined for this service.
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 1rem;">
+                            @foreach (var f in fn.BusinessRulesAndFormulas)
+                            {
+                                <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 10px; padding: 1.25rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <h4 style="font-size: 1.05rem; font-weight: 800; color: var(--primary-purple); margin: 0;">
+                                            @f.RuleId: @f.RuleTitle
+                                        </h4>
+                                        <span class="badge-clean-gold">Category: @f.Category</span>
+                                    </div>
+                                    <p style="color: var(--text-secondary); font-size: 0.88rem; margin: 0.35rem 0 0.75rem 0;">
+                                        @f.Description
+                                    </p>
+                                    @if (!string.IsNullOrWhiteSpace(f.FormalLogicOrFormula))
+                                    {
+                                        <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 0.85rem; border-radius: 6px; font-family: monospace; font-size: 0.95rem; color: var(--accent-coral);">
+                                            <code>@f.FormalLogicOrFormula</code>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- SECTION D: DATA DICTIONARY -->
+            @if (_activeSection == "dictionary")
+            {
+                <div style="margin-top: 1rem;">
+                    <h3 style="font-size: 1.1rem; color: var(--text-main); font-weight: 700; margin-bottom: 1rem;">
+                        🗄️ Core Data Entities & Schema Dictionary (@(fn.DataDictionary?.Count ?? 0))
+                    </h3>
+
+                    @if (fn.DataDictionary == null || fn.DataDictionary.Count == 0)
+                    {
+                        <div style="color: var(--text-muted); padding: 1.5rem; text-align: center;">
+                            No entity dictionaries defined for this service.
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 1rem;">
+                            @foreach (var d in fn.DataDictionary)
+                            {
+                                <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 10px; padding: 1.25rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <h4 style="font-size: 1.05rem; font-weight: 800; color: var(--primary-purple); margin: 0;">
+                                            Entity: @d.EntityName
+                                        </h4>
+                                        <span class="badge-clean-purple">PK: @d.PrimaryKey</span>
+                                    </div>
+                                    <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.75rem;">
+                                        @d.Description
+                                    </p>
+
+                                    @if (d.Fields != null && d.Fields.Count > 0)
+                                    {
+                                        <table class="saas-table" style="width: 100%; background: var(--bg-card); border-radius: 6px;">
+                                            <thead>
+                                                <tr>
+                                                    <th>Field Name</th>
+                                                    <th>Type</th>
+                                                    <th>Required</th>
+                                                    <th>Description / Constraints</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var field in d.Fields)
+                                                {
+                                                    <tr>
+                                                        <td><code>@field.Name</code></td>
+                                                        <td><span class="badge-clean-gold" style="font-size: 0.75rem;">@field.DataType</span></td>
+                                                        <td>@(field.Required ? "Yes" : "No")</td>
+                                                        <td style="color: var(--text-secondary); font-size: 0.82rem;">@field.Description</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- SECTION E: INVARIANTS -->
+            @if (_activeSection == "invariants")
+            {
+                <div style="margin-top: 1rem;">
+                    <h3 style="font-size: 1.1rem; color: var(--text-main); font-weight: 700; margin-bottom: 1rem;">
+                        🛡️ System Invariants & Architectural Constraints (@(fn.Invariants?.Count ?? 0))
+                    </h3>
+
+                    @if (fn.Invariants == null || fn.Invariants.Count == 0)
+                    {
+                        <div style="color: var(--text-muted); padding: 1.5rem; text-align: center;">
+                            No system invariants defined for this service.
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 10px; padding: 1.25rem;">
+                            <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.9rem; color: var(--text-main);">
+                                @foreach (var inv in fn.Invariants)
+                                {
+                                    <li style="margin-bottom: 0.5rem;">
+                                        <strong>@inv.Id:</strong> @inv.Description
+                                        @if (!string.IsNullOrWhiteSpace(inv.EnforcementMechanism))
+                                        {
+                                            <span class="badge-clean-purple" style="font-size: 0.72rem; margin-left: 0.4rem;">@inv.EnforcementMechanism</span>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+}
+else
+{
+    <div style="background: var(--bg-subtle); border: 1px dashed var(--border-card); border-radius: 12px; padding: 3rem; text-align: center; color: var(--text-muted);">
+        <div style="font-size: 2rem; margin-bottom: 0.75rem;">📖</div>
+        <h3 style="font-size: 1.15rem; color: var(--text-main); font-weight: 700; margin-bottom: 0.35rem;">No Service Selected</h3>
+        <p>Use the search picker above to select any microservice from your fleet to explore its complete Living Blueprint.</p>
+    </div>
+}
+
+@code {
+    private string _activeSection = "usecases";
+    private string _selectedServiceName = string.Empty;
+    private AtlasResource? _currentResource;
+
+    protected override void OnInitialized()
+    {
+        var summaries = SpecRepo.GetAllSummaries();
+        if (summaries.Count > 0)
+        {
+            _selectedServiceName = summaries[0].Name;
+            _currentResource = SpecRepo.GetByName(_selectedServiceName);
+        }
+    }
+
+    private void OnServiceChanged(string serviceName)
+    {
+        _selectedServiceName = serviceName;
+        if (!string.IsNullOrWhiteSpace(serviceName))
+        {
+            _currentResource = SpecRepo.GetByName(serviceName);
+        }
+        else
+        {
+            _currentResource = null;
+        }
+    }
+
+    private async Task ExportRfpAsync()
+    {
+        if (_currentResource == null) return;
+        try
+        {
+            var markdown = RfpService.GenerateMarkdownRfp(_currentResource);
+            var bytes = System.Text.Encoding.UTF8.GetBytes(markdown);
+            var base64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("downloadFileFromBase64", $"{_currentResource.Metadata.Name}_Vendor_RFP_Blueprint.md", "text/markdown", base64);
+        }
+        catch { }
+    }
+}

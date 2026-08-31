@@ -1,242 +1,168 @@
-# AtlasResourceCRD ⚡
+# Atlas Enterprise Platform ⚡
 
-> **Agentic Codebase Architecture, OWASP Security & SIG Quality Scanner**  
-> Synthesizes deep multi-diagram software catalogs into Kubernetes CustomResourceDefinitions (`atlas.io/v1alpha1`), Backstage entities, and interactive standalone HTML dashboards powered by **.NET 10** and **Google Gemini 3.7 Flash with High Thinking**.
-
----
-
-## 🚀 Key Features
-
-- 🗺️ **Map-Reduce Multi-Agent Architecture**:
-  - **Map Phase**: Concurrently extracts lightweight semantic summaries across all source files in parallel (`SemaphoreSlim` concurrency control).
-  - **Reduce Phase**: Global Architect Agent (Gemini 3.7 Flash + High Thinking with 24k token reasoning budget) merges file summaries, manifests, and git metadata into a unified architectural catalog.
-- ⚡ **Multi-Tier Git Caching & Instant Reruns**:
-  - **Map Caching**: Git Blob SHA-1 hashes stored at `.atlas/cache/files/{sha}.json`. Unchanged files execute in **<100ms** with **0 LLM tokens**.
-  - **Synthesis & Artifact Caching**: Stores full `AtlasResource` and rendered HTML in `.atlas/cache/synth/latest.json`. Re-running scans without code changes produces an **instant 100% Cache HIT** in **<50ms**.
-- 🔄 **Idempotent Incremental Diff Patching**:
-  - On new commits, Atlas calculates file diffs (added/modified/deleted), summarizes only changed files, and feeds the previous baseline `AtlasResource` + diffs into an incremental delta prompt.
-  - **Topological Stability**: Preserves diagram node IDs, layout structure, and unaffected security/quality findings without flapping or drastic re-writes.
-- 🛡️ **Mermaid AST Linter & Iterative Auto-Repair Loop**:
-  - Validates diagram syntax (balanced subgraphs, bracket matching, arrow escaping, pipe syntax).
-  - Automatically sanitizes common syntax hazards (e.g. `->` inside quotes).
-  - Iterative LLM repair loop auto-corrects broken diagrams with deterministic fallback generators.
-- 📖 **Deep Functional Specifications & Living Logic Blueprints**:
-  - High-level **Business Capabilities** linked to measurable business outcomes.
-  - Executable-grade **Business Use-Cases** detailed enough to rebuild/reimplement domain logic:
-    - **Input Data Contracts**: Parameter schemas, units, data types, and valid ranges.
-    - **Execution Logic**: Detailed step-by-step algorithms and main workflows.
-    - **Alternative & Exception Flows**: Error handling, timeouts, fallbacks, and circuit breaker policies.
-    - **Business Invariants**: Formulas, domain guardrails, rate limits, and timing thresholds.
-    - **Output State Mutations**: Persisted database records, in-memory cache updates, and emitted CloudEvents.
-    - **Acceptance Criteria**: Formatted BDD Given-When-Then scenarios covering happy paths and edge cases.
-    - **💡 Architectural Modernization Advice**: Concrete, actionable recommendations on every use-case to modernize, decouple, or scale the implementation (e.g. MediatR outboxes, saga orchestrators, reactive event streams).
-- 🏛️ **Interactive Architecture Suite (Official C4 Model Standard)**:
-  - **Official C4 Model Palette**: Person (`#08427B`), Software System (`#1168BD`), Container (`#2366A0`), Component (`#438DD5`), External System (`#686868`), and Database (`#08427B`).
-  - **Interactive C4 Legend**: Visual color-coded palette bar embedded in the diagram header.
-  - **360-Degree Architecture Repository Drawer**: Click **any diagram node** or component card to slide open an in-depth inspector with mapped business use cases, active API endpoints, source files, and review findings.
-  - **1-Click High-Res Export**: Instant download of rendered diagrams to vector **SVG** and **PNG** for design reviews and Confluence.
-  - **Node Spotlight on Hover**: Dims unrelated nodes to clearly trace connected communication links and protocols.
-  - **`contextDiagram` (C4 Level 1)**, **`componentDiagram` (C4 Level 2/3)**, and **`dataFlowDiagram` (Lifecycle)**.
-- ⚡ **Deep Semantic Map Phase & High-Throughput Parallelism**:
-  - **Deep Semantic Map Extraction (16x Concurrent Workers)**: Inspects files up to 12,000 characters to extract concrete domain calculations, parameter data contracts, error branches/timeouts, database mutations, and line-level code smells.
-  - **Strict 2-Step Sequential Pipeline**: Guarantees `atlas.yaml` is written and flushed to disk first, then deserialized sequentially to generate `atlas.html` with 100% deterministic parity.
-  - **Git Blob SHA + Synthesis Artifact Caching**: Permanent per-commit caching for **<50ms instant cache hits** on unchanged files.
-- 🚨 **Exhaustive Executive Risk Assessment & Blast Radius**:
-  - Uncompromising, critical principal auditor persona designed specifically for **high-security, air-gapped, and regulated environments**.
-  - **Production Readiness Verdict**: 🟢 `Approved`, 🟡 `Conditional`, or 🔴 `Blocked`.
-  - **Blast Radius & Cascade Containment**: Evaluation of catastrophic failure scenarios, dependency downtime, and crash isolation.
-  - **Restricted Environment & Air-Gap Compliance**: Validates offline operation, credential zero-trust, and boundary isolation.
-  - **Exhaustive Architectural Risk Register**: Complete catalog of all discovered risks mapping risk levels, impacts, trigger scenarios, and required mitigations.
-- 🛡️ **STRIDE Threat Model & Attack Surface Mapping**:
-  - Delineates **Trust Boundaries** (e.g. Public Internet/Cloud vs Local LAN vs In-Process Memory vs Encrypted Storage).
-  - Evaluates Attack Surface across exposed ports (HTTP, WebSockets, MQTT 1883/8883, Matter UDP 5540, config files).
-  - Enumerate concrete Threat Vectors across **STRIDE** categories: **S**poofing, **T**ampering, **R**epudiation, **I**nformation Disclosure, **D**enial of Service, and **E**levation of Privilege.
-  - Interactive, searchable threat vectors table with severity, mitigation controls, and residual risk ratings.
-- 🛡️ **OWASP Top 10 Security Audit**:
-  - Evaluates Broken Access Control, Cryptographic Failures, Injection, Insecure Design, Misconfiguration, Dependency Posture, Auth Failures, and SSRF.
-  - Generates an **Overall Security Grade** (`A+`, `A`, `B`...), compliance checklist, and prioritized findings with actionable mitigations.
-- ⭐ **SIG / ISO 25010 Quality Verdict**:
-  - 5-Star Maintainability scorecard evaluating **Volume**, **Component Independence**, **Unit Complexity**, **Testability**, and **Architecture Consistency**.
-  - Identifies concrete Technical Debt and refactoring action items.
-- 🔍 **Automated Architectural & Code Review**:
-  - Overall **Review Grade** (`A+`, `A`, `B`...) and score (`0-100`).
-  - Highlights **Architectural Strengths & Modern Idioms** executed cleanly.
-  - Detects **Anti-Patterns & Code Smells** (e.g. God classes, sync-over-async, tight coupling, improper disposal).
-  - Prioritized **Review Findings Table** with file/symbol links, severity tags (`Critical`, `Major`, `Minor`, `Info`), observations, and concrete refactoring advice.
-- 🖥️ **Interactive Fullscreen HTML Visualizer**:
-  - Standalone, zero-dependency `atlas.html` dashboard with live client-side Mermaid rendering.
-  - **Fullscreen Modal Viewport** with smooth mouse-wheel zooming and drag-to-pan.
-  - **Filterable Code Review, Threat Model, API, and Living Documentation Tables**.
-  - **Auto-Browser Launch**: Automatically opens the generated dashboard in your default browser.
-- 📜 **Kubernetes CRD & Backstage Standardized**:
-  - Outputs compliant `atlas.io/v1alpha1` Kubernetes manifests validated against RFC-1123 DNS naming rules.
-  - Self-healing auto-repair loop guarantees 100% deterministic schema conformance.
+> **Centralized Enterprise Architecture, Software Catalog, Infrastructure Topology & Graph Intelligence Hub**  
+> Synthesizes deep multi-diagram software catalogs into Kubernetes CustomResourceDefinitions (`atlas.io/v1alpha1`), feeds Neo4j property graphs, tracks runtime hosting coordinates (Kubernetes / VMs / IIS), and provides a real-time **Blazor Server** interactive dashboard styled with the **Stater Enterprise Design System** (`#562178` Royal Purple & `#F8A719` Amber Gold).
+>
+> Supports both **Cloud LLMs (Google Gemini 3.7 Flash with High Thinking)** and **100% Local / Self-Hosted LLMs (Qwen 2.5 Coder, Gemma 2, DeepSeek-R1 via Ollama, LM Studio, or vLLM)**.
 
 ---
 
-## 📦 Installation & Setup
+## 🏛️ Monorepo Architecture
+
+```
+Atlas.slnx
+├── src/Atlas.Core/            # Domain models, Multi-Model LLM abstraction, Map-Reduce agent pipeline, CRD validation, serialization, remote client
+├── src/Atlas.Scanner.Cli/     # 100% Offline Standalone CLI tool (`atlas scan .`, `atlas sbom .`) with remote caching
+├── src/Atlas.Server/          # 100% Stateless Hub (.NET 10 Blazor Server + REST API + Neo4j Graph + Background CVE sync)
+├── tests/Atlas.Core.Tests/    # Automated unit & integration test suite (46 passing tests)
+├── docker-compose.yml         # 1-click Neo4j & Atlas stack
+├── CONTRIBUTING.md            # Guidelines for open-source contributors
+├── SECURITY.md                # Security policy & vulnerability reporting
+└── LICENSE                    # MIT License
+```
+
+---
+
+## 🚀 Key Capabilities
+
+### 1. 🤖 Multi-Model LLM Abstraction (Cloud & Local)
+- **Named Profiles**: Seamlessly switch between cloud and local providers with `--profile` (`-p`):
+  - **`gemini`** (Default): Google Gemini 3.7 Flash with native structured outputs and High Thinking reasoning budget.
+  - **`local-qwen`**: Local Qwen 2.5 Coder (e.g. `qwen2.5-coder:32b` or `7b` via Ollama at `http://localhost:11434/v1` with 32k context).
+  - **`local-gemma`**: Local Google Gemma 2 (e.g. `gemma2:27b` or `9b` via LM Studio / Ollama at `http://localhost:1234/v1`).
+- **Adaptive Token Budgeting**: Automatically scales synthesis context limits based on the active model's context window (8k for Gemma, 32k for Qwen, 128k for Gemini).
+- **Self-Healing Resilient Parser**: Multi-phase JSON extraction with markdown stripping and regex fallback repairs to ensure 100% reliable schema parsing across local models.
+
+### 2. 🔍 100% Offline Atlas Scanner CLI (`Atlas.Scanner.Cli`)
+- **Fast, Air-Gapped Codebase Analysis**:
+  - Local manifest parser extracts package dependencies (`.csproj`, `package.json`, `requirements.txt`, `pom.xml`, `Cargo.toml`, `go.mod`).
+  - Generates standard **CycloneDX 1.5 SBOM** with standardized PURLs with **0 outbound network calls**.
+- **Pure Remote Caching Protocol**:
+  - Zero local disk clutter; cache checks and synthesis stores happen strictly via Atlas Server Neo4j cache endpoints in real-time.
+  - Unchanged files and commits evaluate in **<50ms** with **0 LLM tokens**.
+
+### 3. 🌐 Runtime Hosting & Deployment Topology Ingestion
+- **Standard REST API (`POST /api/v1/deployment/report`)**:
+  - Direct HTTP webhook for **ArgoCD Sync Webhooks / GitOps**, **GitHub Actions / GitLab CI / Azure DevOps release pipelines**, and **legacy VM provisioning scripts (Ansible, PowerShell, `curl`)**.
+- **Infrastructure Modeling in Neo4j**:
+  - Maps `(:Environment)`, `(:Cluster)`, `(:Namespace)`, and `(:Host)` nodes linked via `[:DEPLOYED_TO]` and `[:HOSTED_ON]`.
+  - Automatically identifies **Co-Located Microservices** sharing the same VM host or Kubernetes cluster.
+  - Correlates runtime hosting exposure (`Public Ingress` vs `Internal Only`) with code-level STRIDE threats and blast radius calculations.
+
+### 4. 🏛️ 100% Stateless Atlas Server (`Atlas.Server`)
+- **Pure Neo4j Backbone**:
+  - Completely eliminates in-memory caches and disk files. All services, historical snapshots, C4 relationships, and file summary hashes live directly in Neo4j.
+  - Handles scale requirements for **>20,000 microservices** with fast Cypher lookups and pagination.
+- **Centralized Continuous Vulnerability & License Monitoring**:
+  - `VulnerabilityBackgroundSyncService` performs asynchronous `deps.dev` verified SPDX license extraction and `OSV.dev` real-time CVE audits upon catalog ingestion and on scheduled 24h cycles.
+- **Interactive Blazor Server Dashboard**:
+  - 🏛️ **Global C4 Architecture Studio**: Interactive Level 1 Context, Level 2 Component, and Level 3 Data Flow Mermaid graphs.
+  - 🚀 **Hosting & Topology View**: Live deployment coordinates, orchestrators (ArgoCD/Ansible), ingress exposure, and co-located workloads.
+  - 🚨 **Cross-Service Blast Radius & Risk Simulator**: Simulate primary outages and calculate shared infrastructure blast radius.
+  - 📦 **Enterprise Service Catalog**: Live searchable fleet catalog with SIG stars, risk badges, and direct YAML export.
+
+---
+
+## 📦 Installation & Quickstart
 
 ### Prerequisites
 - [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- Google Gemini API Key (`GEMINI_API_KEY`)
+- Docker & Docker Compose (for Neo4j)
+- *(Optional)* [Ollama](https://ollama.com) or [LM Studio](https://lmstudio.ai) for local LLMs
+- *(Optional)* Google Gemini API Key for cloud LLM
 
+### 1. Start Neo4j Database
+```bash
+docker compose up -d
+```
+*Neo4j Browser will be available at `http://localhost:7474` (Bolt: `bolt://localhost:7687`).*
+
+### 2. Build & Run Tests
 ```powershell
-# Clone the repository
-git clone https://github.com/rvdzwet/AtlasResourceCRD.git
-cd AtlasResourceCRD
-
-# Build the solution
-dotnet build
-
-# Run test suite (14 automated unit tests)
-dotnet test
+dotnet build Atlas.slnx
+dotnet test Atlas.slnx
 ```
 
----
-
-## 🛠️ CLI Usage
-
+### 3. Launch Atlas Server
 ```powershell
-# Scan a repository (generates atlas.yaml + atlas.html and opens browser)
-atlas-crd scan "C:\path\to\your\repo" -k <API_KEY> --thinking high -v
-
-# Scan with custom concurrency and unlimited files
-atlas-crd scan . -k <API_KEY> --concurrency 16 --all-files
-
-# Scan without opening the browser (ideal for CI/CD pipelines)
-atlas-crd scan . -k <API_KEY> --no-open -o catalog/atlas.yaml
-
-# Validate an existing CRD manifest
-atlas-crd validate atlas.yaml
-
-# Render / regenerate interactive HTML dashboard from existing CRD manifest
-atlas-crd html atlas.yaml
-
-# Generate the Kubernetes CustomResourceDefinition schema
-atlas-crd schema k8s/atlas-crd-definition.yaml
-
-# Initialize a starter .atlas.yaml repo config
-atlas-crd init
+dotnet run --project src/Atlas.Server
 ```
-
-### CLI Command Options
-
-| Option | Description | Default |
-| :--- | :--- | :--- |
-| `-o, --output <file>` | Output file destination for CRD manifest | `atlas.yaml` |
-| `-k, --api-key <key>` | Google Gemini API key (or `GEMINI_API_KEY` env var) | Required |
-| `-m, --model <name>` | Gemini model name | `gemini-3.7-flash` |
-| `--thinking <level>` | Thinking mode: `high` (24k), `max` (65k), `dynamic` (-1), `medium`, `low`, `off` | `high` |
-| `--concurrency <n>` | Concurrent workers for parallel Map phase | `8` |
-| `--max-files <n>` | Max source files to analyze | `unlimited` |
-| `--all-files` | Scan all discovered source files | `true` |
-| `--no-cache` | Disable Git Blob SHA and Synthesis caching | `false` |
-| `--clear-cache` | Clear existing `.atlas/cache` before scan | `false` |
-| `--force-synth` | Force fresh global synthesis without incremental diff patching | `false` |
-| `--no-open` | Do not automatically open `atlas.html` in browser | `false` |
-| `-v, --verbose` | Enable debug logging | `false` |
-| `-vv, --trace` | Enable extreme trace logging (prompts, payloads, tokens) | `false` |
+*Dashboard will be available at `http://localhost:5000`.*
 
 ---
 
-## ⚙️ Repository Configuration (`.atlas.yaml`)
+## 🛠️ CLI Scanning & Multi-Model Examples
 
-Create an optional `.atlas.yaml` in your repository root to configure metadata overrides and custom ignore rules:
-
-```yaml
-name: romars-iot-engine
-namespace: production
-tier: Backend # Backend | Frontend | CLI | Library | Worker | Gateway
-owner: rvdzwet
-
-ignoreGlobs:
-  - "legacy/**"
-  - "docs/archive/**"
-  - "tmp/**"
-
-labels:
-  team: iot-platform
-  environment: production
-
-annotations:
-  atlas.io/criticality: high
-```
-
----
-
-## 🧩 CRD Manifest Schema (`atlas.io/v1alpha1`)
-
-```yaml
-apiVersion: atlas.io/v1alpha1
-kind: AtlasResource
-metadata:
-  name: romars-iot-engine
-  namespace: default
-  labels:
-    app.kubernetes.io/name: romars-iot-engine
-    app.kubernetes.io/part-of: backend
-    app.kubernetes.io/managed-by: atlas
-    atlas.io/language: c#
-  annotations:
-    atlas.io/scanned-at: "2026-08-27T07:53:46Z"
-    atlas.io/git-commit-short: "96d091c"
-    atlas.io/git-branch: "master"
-spec:
-  componentOverview:
-    name: RoMars.IoT.Engine
-    description: Smart home IoT automation engine and telemetry aggregation platform.
-    tier: Backend
-    purpose: Centralized smart home automation, energy management, and sensor telemetry.
-    lifecycle: Active
-  techStack:
-    primaryLanguage: C#
-    frameworks:
-      - name: ASP.NET Core
-        version: "10.0"
-      - name: Angular
-        version: "19.0"
-  architecture:
-    pattern: Event-Driven Modular Monolith
-    contextDiagram: |
-      flowchart TD
-        User --> Engine
-    componentDiagram: |
-      flowchart TD
-        SPA -- "HTTP/REST" --> API
-        API -- "Influx Line Protocol" --> InfluxDB
-    dataFlowDiagram: |
-      flowchart LR
-        Sensors --> InfluxDB
-  security:
-    overallRating: A-
-    securityScore: 88
-    owaspCompliance:
-      - category: A01:2021-Broken Access Control
-        status: Partial
-        evidence: Local Kestrel API endpoints require LAN network isolation.
-      - category: A02:2021-Cryptographic Failures
-        status: Compliant
-        evidence: Secrets encrypted with SQLCipher (AES-256).
-  quality:
-    sigStars: 4.6
-    maintainabilityLevel: High
-    dimensions:
-      - dimension: ComponentIndependence
-        stars: 5
-        evaluation: Outstanding modular decoupling with shared interfaces.
-```
-
----
-
-## 🧪 Testing
-
+### Cloud Gemini Scan (Default)
 ```powershell
-dotnet test
-Passed!  - Failed: 0, Passed: 14, Skipped: 0, Total: 14, Duration: 564 ms - AtlasResourceCRD.Tests.dll (net10.0)
+atlas scan . --server http://localhost:5000 -k <GEMINI_API_KEY>
+```
+
+### Local Qwen 2.5 Coder Scan (via Ollama)
+```powershell
+# 1. Pull Qwen model in Ollama
+ollama run qwen2.5-coder:32b
+
+# 2. Run Atlas scan using local-qwen profile
+atlas scan . --profile local-qwen --server http://localhost:5000
+```
+
+### Local Gemma 2 Scan (via LM Studio or Ollama)
+```powershell
+atlas scan . --profile local-gemma --server http://localhost:5000
+```
+
+### Generate Offline CycloneDX 1.5 SBOM
+```powershell
+atlas sbom . -o cyclonedx-bom.json
 ```
 
 ---
 
-## 📄 License
+## 📡 Reporting Runtime Deployments
 
-MIT License © 2026 Romano van der Zwet
+### Kubernetes / ArgoCD PostSync Hook
+```bash
+curl -X POST http://localhost:5000/api/v1/deployment/report \
+  -H "Content-Type: application/json" \
+  -d '{
+    "serviceName": "payments-core",
+    "environment": "production",
+    "platform": "Kubernetes",
+    "cluster": "k8s-prod-weu",
+    "namespace": "payments-prod",
+    "tool": "ArgoCD",
+    "imageOrArtifact": "ghcr.io/org/payments:v2.4.1",
+    "gitCommit": "a1b2c3d",
+    "replicas": 3,
+    "ingress": {
+      "publicUrl": "https://api.domain.com/payments",
+      "exposure": "Public"
+    }
+  }'
+```
+
+### Legacy VM / IIS Deployment (PowerShell / Ansible)
+```powershell
+$body = @{
+    serviceName     = "legacy-auth"
+    environment     = "production"
+    platform        = "VirtualMachine"
+    host            = "srv-iis-01.corp.local"
+    ipAddress       = "192.168.1.4"
+    os              = "Windows Server 2022"
+    tool            = "Ansible"
+    imageOrArtifact = "C:\inetpub\wwwroot\LegacyAuth"
+    gitCommit       = "f4e3d2c"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:5000/api/v1/deployment/report" -Method Post -Body $body -ContentType "application/json"
+```
+
+---
+
+## 🤝 Contributing & Security
+
+- **Contributing**: Please review [CONTRIBUTING.md](CONTRIBUTING.md) for branch workflows, PR guidelines, and coding standards.
+- **Security Disclosures**: Please see [SECURITY.md](SECURITY.md) to report vulnerabilities privately.
+- **License**: [MIT License](LICENSE) © Atlas Authors.

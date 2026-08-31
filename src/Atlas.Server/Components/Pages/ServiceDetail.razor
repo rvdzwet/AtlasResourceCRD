@@ -1,0 +1,2296 @@
+@page "/catalog/{ServiceName}"
+@rendermode InteractiveServer
+@inject SpecDocumentRepository SpecRepo
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject VendorRfpExportService RfpService
+@inject Neo4jGraphMapper GraphMapper
+@inject Neo4jGraphService GraphService
+@inject ArchitectureStitchingAgent StitchingAgent
+
+<PageTitle>@(Resource?.Metadata?.Name ?? "Service Detail") - Atlas Enterprise Hub</PageTitle>
+
+@if (Resource == null)
+{
+    <div class="saas-card" style="text-align: center; padding: 4rem;">
+        <h2 style="color: var(--primary-purple);">404 — Microservice Not Found</h2>
+        <p style="color: var(--text-secondary); margin-top: 0.5rem;">The requested service '@ServiceName' does not exist in the Atlas Catalog.</p>
+        <a href="/catalog" class="sidebar-action-btn" style="display: inline-flex; margin-top: 1.5rem;">Return to Service Catalog</a>
+    </div>
+}
+else
+{
+    var meta = Resource.Metadata;
+    var spec = Resource.Spec;
+    var commitSha = meta.Annotations != null && meta.Annotations.TryGetValue("atlas.io/git-commit", out var sha) && sha.Length >= 7 ? sha.Substring(0, 7) : "unknown";
+    var branch = meta.Annotations != null && meta.Annotations.TryGetValue("atlas.io/git-branch", out var b) ? b : "master";
+    var remote = meta.Annotations != null && meta.Annotations.TryGetValue("atlas.io/git-remote", out var r) ? r : "";
+
+    <!-- Clean SaaS Header Banner -->
+    <div class="saas-card" style="margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                    <a href="/catalog" style="color: var(--primary-purple); text-decoration: none; font-weight: 600;">📦 Service Catalog</a>
+                    <span>/</span>
+                    <span style="color: var(--text-main); font-weight: 700;">@meta.Name</span>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                    <h1 style="color: var(--text-main); font-size: 1.85rem; font-weight: 800;">
+                        @meta.Name
+                    </h1>
+                    <span class="badge-clean-purple">@(spec.ComponentOverview?.Tier ?? "Backend")</span>
+                    <span class="badge-clean-gold">⭐ @((spec.Quality?.SigStars ?? 4.0).ToString("0.0")) / 5.0</span>
+                    @if (_historySummary?.PreviousSnapshot != null && _historySummary.LatestSnapshot != null)
+                    {
+                        var deltaStars = _historySummary.LatestSnapshot.DeltaSigStars;
+                        if (deltaStars > 0)
+                        {
+                            <span class="badge-clean-green" title="Improved Quality vs Previous Scan">▲ +@deltaStars.ToString("0.0") ⭐</span>
+                        }
+                        else if (deltaStars < 0)
+                        {
+                            <span class="badge-clean-red" style="background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA;" title="Degraded Quality vs Previous Scan">▼ @deltaStars.ToString("0.0") ⭐</span>
+                        }
+
+                        var deltaThreats = _historySummary.LatestSnapshot.DeltaThreats;
+                        if (deltaThreats < 0)
+                        {
+                            <span class="badge-clean-green" title="Threats Resolved vs Previous Scan">▼ @Math.Abs(deltaThreats) 🛡️</span>
+                        }
+                        else if (deltaThreats > 0)
+                        {
+                            <span class="badge-clean-red" style="background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA;" title="New Threats Introduced vs Previous Scan">▲ +@deltaThreats 🛡️</span>
+                        }
+                    }
+                    <span class="badge-clean-green">Grade @(spec.CodeReview?.ReviewGrade ?? "A")</span>
+                    <span class="badge-clean-purple">Risk: @(spec.RiskSummary?.OverallRiskLevel ?? "Low")</span>
+                </div>
+
+                <p style="color: var(--text-secondary); font-size: 0.95rem; margin-top: 0.6rem; max-width: 900px; line-height: 1.5;">
+                    @(spec.ComponentOverview?.Description ?? "No description provided.")
+                </p>
+
+                <div style="display: flex; gap: 1.5rem; margin-top: 0.85rem; font-size: 0.85rem; color: var(--text-secondary); flex-wrap: wrap;">
+                    <span>📌 Git: <strong style="color: var(--text-main); font-family: var(--font-mono);">@commitSha</strong> (@branch)</span>
+                    @if (!string.IsNullOrWhiteSpace(remote))
+                    {
+                        <span>🔗 <a href="@remote" target="_blank" style="color: var(--primary-purple); text-decoration: none; font-weight: 600;">@remote</a></span>
+                    }
+                    <span>👤 Owner: <strong style="color: var(--text-main);">@(spec.ComponentOverview?.Owner ?? "Platform Team")</strong></span>
+                    <span>🚀 Lifecycle: <strong style="color: var(--text-main);">@(spec.ComponentOverview?.Lifecycle ?? "Active")</strong></span>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <a href="/blast-radius" class="saas-filter-pill" style="text-decoration: none; display: flex; align-items: center; gap: 0.35rem;">
+                    <span>🚨 Blast Radius</span>
+                </a>
+                <a href="/api/v1/catalog/resources/@meta.Name/yaml" target="_blank" class="saas-filter-pill active" style="text-decoration: none;">
+                    <span>📄 Raw YAML</span>
+                </a>
+                <button class="saas-filter-pill" style="background: #FEF2F2; color: #DC2626; border-color: #FECACA;" @onclick="() => _showDeleteConfirm = true">
+                    <span>🗑️ Delete Service</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (_showDeleteConfirm)
+    {
+        <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;" @onclick="() => _showDeleteConfirm = false">
+            <div style="background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 16px; padding: 2rem; max-width: 480px; width: 90%; box-shadow: var(--shadow-card);" @onclick:stopPropagation="true">
+                <div style="text-align: center; margin-bottom: 1.5rem;">
+                    <div style="font-size: 3rem;">⚠️</div>
+                    <h3 style="color: #DC2626; margin: 0.5rem 0;">Permanently Delete Service</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">
+                        This will <strong>permanently remove</strong> <code style="background: #FEF2F2; color: #DC2626; padding: 0.1rem 0.4rem; border-radius: 4px;">@meta.Name</code>
+                        from the Atlas catalog, including:
+                    </p>
+                </div>
+                <ul style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.8; margin: 0 0 1.5rem 1.2rem;">
+                    <li>All YAML specification files and version history</li>
+                    <li>Neo4j graph nodes, endpoints, threats, and relationships</li>
+                    <li>Synthesis cache snapshots</li>
+                </ul>
+                <p style="color: #DC2626; font-size: 0.8rem; font-weight: 600; text-align: center; margin-bottom: 1.5rem;">
+                    ⛔ This action cannot be undone.
+                </p>
+                <div style="display: flex; gap: 0.75rem; justify-content: center;">
+                    <button class="saas-filter-pill" style="padding: 0.6rem 1.5rem;" @onclick="() => _showDeleteConfirm = false">
+                        Cancel
+                    </button>
+                    <button class="saas-filter-pill" style="background: #DC2626; color: white; border-color: #DC2626; padding: 0.6rem 1.5rem; font-weight: 700;"
+                            @onclick="DeleteServiceAsync" disabled="@_isDeleting">
+                        @if (_isDeleting)
+                        {
+                            <span>Deleting...</span>
+                        }
+                        else
+                        {
+                            <span>🗑️ Yes, Delete Forever</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Complete Category Navigation Tab Bar (All YAML Categories Covered) -->
+    <div style="display: flex; gap: 0.4rem; padding-bottom: 0.75rem; margin-bottom: 1.25rem; overflow-x: auto;">
+        <button class="saas-filter-pill @(_activeTab == "architecture" ? "active" : "")" @onclick='() => SetTab("architecture")'>
+            🏛️ Architecture & C4
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "techstack" ? "active" : "")" @onclick='() => SetTab("techstack")'>
+            🛠️ Tech Stack & Packages
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "apis" ? "active" : "")" @onclick='() => SetTab("apis")'>
+            🔌 APIs & Events (@(spec.ApiContracts?.Endpoints?.Count ?? 0))
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "datastores" ? "active" : "")" @onclick='() => SetTab("datastores")'>
+            🗄️ Data Stores & Config (@(spec.DataStores?.Databases?.Count ?? 0))
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "observability" ? "active" : "")" @onclick='() => SetTab("observability")'>
+            📡 Observability & Logs
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "security" ? "active" : "")" @onclick='() => SetTab("security")'>
+            🛡️ Security & OWASP (@(spec.Security?.Findings?.Count ?? 0))
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "threatmodel" ? "active" : "")" @onclick='() => SetTab("threatmodel")'>
+            🎯 STRIDE Threat Model (@(spec.ThreatModel?.Threats?.Count ?? 0))
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "codereview" ? "active" : "")" @onclick='() => SetTab("codereview")'>
+            📝 Code Review (@(spec.CodeReview?.ReviewGrade ?? "A"))
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "quality" ? "active" : "")" @onclick='() => SetTab("quality")'>
+            ⭐ SIG Quality (@(spec.Quality?.SigStars.ToString("0.0") ?? "4.0")★)
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "risk" ? "active" : "")" @onclick='() => SetTab("risk")'>
+            🚨 Risk & Blast Radius
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "livingdocs" ? "active" : "")" @onclick='() => SetTab("livingdocs")'>
+            📖 Living Specs & Invariants
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "history" ? "active" : "")" @onclick='() => SetTab("history")'>
+            📈 History & Trends (@(_historySummary?.Snapshots?.Count ?? 1))
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "deployment" ? "active" : "")" @onclick='() => SetTab("deployment")'>
+            🚀 Hosting & Topology (@(_deployments?.Count ?? 0))
+        </button>
+        <button class="saas-filter-pill @(_activeTab == "manifest" ? "active" : "")" @onclick='() => SetTab("manifest")'>
+            📄 Raw Manifest
+        </button>
+    </div>
+
+    <!-- TAB 1: Architecture & C4 Diagrams -->
+    @if (_activeTab == "architecture")
+    {
+        <div class="saas-card" style="margin-bottom: 1.5rem;">
+            <div class="saas-card-header" style="flex-wrap: wrap; gap: 0.75rem;">
+                <div>
+                    <h2 class="saas-card-title">Interactive C4 Architecture Suite</h2>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                        Architectural pattern: <strong>@(spec.Architecture?.Pattern ?? "Clean Architecture / Modular Monolith")</strong>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+                    <button class="saas-filter-pill @(_activeDiagramType == "component" ? "active" : "")" @onclick='() => SwitchDiagram("component")'>
+                        Level 2 Component
+                    </button>
+                    <button class="saas-filter-pill @(_activeDiagramType == "context" ? "active" : "")" @onclick='() => SwitchDiagram("context")'>
+                        Level 1 Context
+                    </button>
+                    <button class="saas-filter-pill @(_activeDiagramType == "dataflow" ? "active" : "")" @onclick='() => SwitchDiagram("dataflow")'>
+                        Level 3 Data Flow
+                    </button>
+
+                    <div style="width: 1px; height: 20px; background: var(--border-card); margin: 0 0.25rem;"></div>
+
+                    <button class="saas-filter-pill" title="Copy Mermaid Definition" @onclick="CopyActiveMermaid">
+                        📋 Copy Code
+                    </button>
+                    <button class="saas-filter-pill" title="Export Vector SVG" @onclick='() => ExportSvg("service-c4-viewport")'>
+                        📥 SVG
+                    </button>
+                    <a href="/" class="saas-filter-pill" style="text-decoration: none;" title="Open Global Architecture Studio">
+                        🌐 Global Studio
+                    </a>
+                </div>
+            </div>
+
+            <div id="service-c4-viewport" class="mermaid-viewport" style="background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 12px; min-height: 380px; display: flex; align-items: center; justify-content: center; padding: 1.5rem; overflow-x: auto;">
+                <div style="color: var(--primary-purple); font-weight: 600;">Rendering C4 Architecture View...</div>
+            </div>
+        </div>
+
+        @if (spec.Architecture?.Components != null && spec.Architecture.Components.Count > 0)
+        {
+            <div class="saas-card">
+                <div class="saas-card-header">
+                    <h3 class="saas-card-title">Internal Components & Domain Modules</h3>
+                    <span class="badge-clean-purple">@spec.Architecture.Components.Count Modules</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem;">
+                    @foreach (var comp in spec.Architecture.Components)
+                    {
+                        <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1.25rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <strong style="color: var(--text-main); font-size: 1rem;">@comp.Name</strong>
+                                <span class="badge-clean-purple">@comp.Type</span>
+                            </div>
+                            <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.75rem;">
+                                @comp.Description
+                            </p>
+                            @if (comp.Responsibilities != null && comp.Responsibilities.Count > 0)
+                            {
+                                <ul style="padding-left: 1.25rem; font-size: 0.82rem; color: var(--text-secondary);">
+                                    @foreach (var resp in comp.Responsibilities)
+                                    {
+                                        <li style="margin-bottom: 0.2rem;">@resp</li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+
+    <!-- TAB 2: Tech Stack & Dependencies / SBOM -->
+    @if (_activeTab == "techstack")
+    {
+        <div class="saas-card" style="margin-bottom: 1.5rem;">
+            <div class="saas-card-header">
+                <div>
+                    <h3 class="saas-card-title">Technologies & Frameworks</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Primary Ecosystem: @(spec.TechStack?.PrimaryLanguage ?? "Unknown")</div>
+                </div>
+                @if (spec.Dependencies?.Sbom != null)
+                {
+                    <button class="saas-filter-pill" style="background: #F0EDFF; color: var(--primary-purple); font-weight: 700;" @onclick="DownloadServiceSbomAsync">
+                        📥 Download CycloneDX 1.5 JSON
+                    </button>
+                }
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1rem;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Languages</div>
+                    <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.35rem;">
+                        @foreach (var lang in spec.TechStack?.Languages ?? new List<TechItem>())
+                        {
+                            <span class="badge-clean-purple">@lang.Name @(lang.Version ?? "")</span>
+                        }
+                    </div>
+                </div>
+
+                <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1rem;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Frameworks</div>
+                    <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.35rem;">
+                        @foreach (var fw in spec.TechStack?.Frameworks ?? new List<TechItem>())
+                        {
+                            <span class="badge-clean-green">@fw.Name @(fw.Version ?? "")</span>
+                        }
+                    </div>
+                </div>
+
+                <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1rem;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Runtimes & Build</div>
+                    <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.35rem;">
+                        @foreach (var rItem in spec.TechStack?.Runtimes ?? new List<TechItem>())
+                        {
+                            <span class="badge-clean-gold">@rItem.Name</span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- CycloneDX 1.5 SBOM Component Inventory -->
+            @if (spec.Dependencies?.Sbom?.Components != null && spec.Dependencies.Sbom.Components.Count > 0)
+            {
+                <div class="saas-card-header">
+                    <div>
+                        <h4 class="saas-card-title">CycloneDX 1.5 Component Inventory (SBOM)</h4>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">@spec.Dependencies.Sbom.Components.Count Tracked Direct & Transitive Libraries</div>
+                    </div>
+                    <span class="badge-clean-purple">CycloneDX 1.5 Standard</span>
+                </div>
+
+                <table class="saas-table" style="margin-bottom: 1.5rem;">
+                    <thead>
+                        <tr>
+                            <th>Component Name</th>
+                            <th>Version & PURL</th>
+                            <th>SPDX License</th>
+                            <th>Security (OSV.dev)</th>
+                            <th>Supply Chain Lifecycle</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var comp in spec.Dependencies.Sbom.Components)
+                        {
+                            var licName = comp.Licenses.FirstOrDefault()?.License?.Name ?? comp.Licenses.FirstOrDefault()?.License?.Id ?? "MIT";
+                            var osvUrl = comp.Properties.FirstOrDefault(p => p.Name == "atlas:osv:url")?.Value ?? $"https://osv.dev/list?q={Uri.EscapeDataString(comp.Name)}";
+                            var isDep = comp.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:isDeprecated")?.Value == "true";
+                            var depReason = comp.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:deprecatedReason")?.Value;
+                            var latestVer = comp.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:latestVersion")?.Value;
+                            var isOutdated = comp.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:isOutdated")?.Value == "true";
+                            var vulns = spec.Dependencies.Sbom.Vulnerabilities?.Where(v => v.Affects.Any(a => a.Ref == comp.Purl || a.Ref.Contains(comp.Name))).ToList() ?? new List<CycloneDxVulnerability>();
+
+                            <tr>
+                                <td>
+                                    <strong style="color: var(--text-main);">@comp.Name</strong>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted);">@comp.Description</div>
+                                </td>
+                                <td>
+                                    <code>@comp.Version</code>
+                                    <div style="margin-top: 0.15rem;">
+                                        <code style="background: #F0EDFF; color: var(--primary-purple); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.75rem;">@comp.Purl</code>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge-clean-purple" style="font-size: 0.78rem;">📄 @licName</span>
+                                </td>
+                                <td>
+                                    @if (vulns.Count > 0)
+                                    {
+                                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                            @foreach (var v in vulns)
+                                            {
+                                                var sev = v.Ratings.FirstOrDefault()?.Severity ?? "High";
+                                                <a href="@v.Source.Url" target="_blank" class="badge-clean-red" style="text-decoration: none; font-size: 0.75rem;">
+                                                    🔴 @v.Id (@sev)
+                                                </a>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <a href="@osvUrl" target="_blank" class="badge-clean-green" style="text-decoration: none; font-size: 0.78rem;">
+                                            🛡️ Verified Clean (0 CVEs)
+                                        </a>
+                                    }
+                                </td>
+                                <td>
+                                    @if (isDep)
+                                    {
+                                        <span class="badge-clean-red" style="font-size: 0.75rem;">🚨 Deprecated</span>
+                                        @if (!string.IsNullOrWhiteSpace(depReason))
+                                        {
+                                            <div style="font-size: 0.72rem; color: var(--text-muted);">@depReason</div>
+                                        }
+                                    }
+                                    else if (isOutdated && !string.IsNullOrWhiteSpace(latestVer))
+                                    {
+                                        <span class="badge-clean-gold" style="font-size: 0.75rem;">Update: @latestVer</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #15803D; font-size: 0.78rem; font-weight: 500;">✓ Up to date</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <!-- Fallback: Key Packages -->
+                <div class="saas-card-header">
+                    <h4 class="saas-card-title">Key Package Dependencies</h4>
+                    <span class="badge-clean-purple">@(spec.Dependencies?.KeyPackages?.Count ?? 0) Packages</span>
+                </div>
+
+                <table class="saas-table">
+                    <thead>
+                        <tr>
+                            <th>Package Name</th>
+                            <th>Version</th>
+                            <th>Purpose / Architectural Role</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pkg in spec.Dependencies?.KeyPackages ?? new List<PackageDependency>())
+                        {
+                            <tr>
+                                <td><strong>@pkg.Name</strong></td>
+                                <td><code>@(pkg.Version ?? "Latest")</code></td>
+                                <td style="color: var(--text-secondary);">@(pkg.Purpose ?? "Core runtime dependency")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <!-- OWASP Vulnerability Audit -->
+            @if (spec.Dependencies?.VulnerabilityAudit?.Vulnerabilities != null && spec.Dependencies.VulnerabilityAudit.Vulnerabilities.Count > 0)
+            {
+                <div class="saas-card-header" style="margin-top: 1.5rem;">
+                    <div>
+                        <h4 class="saas-card-title">OWASP Vulnerability Audit (OSV.dev & GHSA)</h4>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">@spec.Dependencies.VulnerabilityAudit.TotalVulnerabilities Matched CVEs/GHSAs</div>
+                    </div>
+                    <span class="badge-clean-red">Action Required</span>
+                </div>
+
+                <table class="saas-table">
+                    <thead>
+                        <tr>
+                            <th>Vulnerability ID</th>
+                            <th>Component</th>
+                            <th>Severity</th>
+                            <th>Description</th>
+                            <th>Fixed Version Remediation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var vuln in spec.Dependencies.VulnerabilityAudit.Vulnerabilities)
+                        {
+                            var sev = vuln.Ratings.FirstOrDefault()?.Severity ?? "High";
+
+                            <tr>
+                                <td>
+                                    <a href="@vuln.Source.Url" target="_blank" style="color: var(--primary-purple); font-weight: 700; text-decoration: none;">
+                                        @vuln.Id
+                                    </a>
+                                </td>
+                                <td><code>@(vuln.Affects.FirstOrDefault()?.Ref ?? "Package")</code></td>
+                                <td>
+                                    <span class="@(sev == "Critical" || sev == "High" ? "badge-clean-red" : "badge-clean-gold")">
+                                        @sev
+                                    </span>
+                                </td>
+                                <td style="color: var(--text-secondary); font-size: 0.85rem; max-width: 320px;">@vuln.Description</td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(vuln.FixedVersion))
+                                    {
+                                        <span style="color: #15803D; font-weight: 700;">💡 Upgrade to >= @vuln.FixedVersion</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: var(--text-muted);">Under vendor review</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+
+    <!-- TAB 3: APIs & Event Contracts -->
+    @if (_activeTab == "apis")
+    {
+        <div class="saas-card" style="margin-bottom: 1.5rem;">
+            <div class="saas-card-header">
+                <h3 class="saas-card-title">HTTP / REST API Endpoints</h3>
+                <span class="badge-clean-purple">@(spec.ApiContracts?.Endpoints?.Count ?? 0) Endpoints</span>
+            </div>
+
+            @if (spec.ApiContracts?.Endpoints != null && spec.ApiContracts.Endpoints.Count > 0)
+            {
+                <table class="saas-table">
+                    <thead>
+                        <tr>
+                            <th>Method</th>
+                            <th>Path</th>
+                            <th>Description</th>
+                            <th>Auth</th>
+                            <th>Request / Response</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var ep in spec.ApiContracts.Endpoints)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="@(ep.Method == "GET" ? "badge-clean-green" : (ep.Method == "POST" ? "badge-clean-purple" : "badge-clean-gold"))">
+                                        @ep.Method
+                                    </span>
+                                </td>
+                                <td><code style="font-weight: 700; color: var(--primary-purple);">@ep.Path</code></td>
+                                <td style="color: var(--text-secondary);">@ep.Description</td>
+                                <td>@(ep.AuthRequired ? "🔒 Required" : "🌐 Public")</td>
+                                <td style="font-size: 0.82rem; color: var(--text-muted);">
+                                    @(ep.RequestType ?? "void") ➔ @(ep.ResponseType ?? "void")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p style="color: var(--text-secondary);">No HTTP endpoints declared for this service.</p>
+            }
+        </div>
+
+        @if (spec.ApiContracts?.Events != null && spec.ApiContracts.Events.Count > 0)
+        {
+            <div class="saas-card">
+                <div class="saas-card-header">
+                    <h3 class="saas-card-title">Asynchronous Event Contracts & Message Streams</h3>
+                    <span class="badge-clean-gold">@spec.ApiContracts.Events.Count Streams</span>
+                </div>
+
+                <table class="saas-table">
+                    <thead>
+                        <tr>
+                            <th>Topic / Queue</th>
+                            <th>Action</th>
+                            <th>Payload Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var ev in spec.ApiContracts.Events)
+                        {
+                            <tr>
+                                <td><code style="font-weight: 700; color: #B45309;">@ev.TopicOrQueue</code></td>
+                                <td><span class="badge-clean-gold">@ev.Action</span></td>
+                                <td><code>@(ev.PayloadType ?? "JSON Schema")</code></td>
+                                <td style="color: var(--text-secondary);">@ev.Description</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+
+    <!-- TAB 4: Data Stores & Configuration -->
+    @if (_activeTab == "datastores")
+    {
+        <div class="saas-card" style="margin-bottom: 1.5rem;">
+            <div class="saas-card-header">
+                <h3 class="saas-card-title">Persistence & Data Stores</h3>
+                <span class="badge-clean-green">@(spec.DataStores?.Databases?.Count ?? 0) Databases</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                @foreach (var db in spec.DataStores?.Databases ?? new List<DataStoreSpec>())
+                {
+                    <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1.25rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <strong style="color: var(--text-main);">🗄️ @db.Name</strong>
+                            <span class="badge-clean-green">@db.Type</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">Role: @db.Role</div>
+                        <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.35rem;">@db.Description</div>
+                    </div>
+                }
+            </div>
+
+            <!-- Environment Variables -->
+            <div class="saas-card-header">
+                <h4 class="saas-card-title">Environment Variables & Configuration</h4>
+                <span class="badge-clean-purple">@(spec.Configuration?.EnvironmentVariables?.Count ?? 0) Variables</span>
+            </div>
+
+            @if (spec.Configuration?.EnvironmentVariables != null && spec.Configuration.EnvironmentVariables.Count > 0)
+            {
+                <table class="saas-table" style="margin-bottom: 1.5rem;">
+                    <thead>
+                        <tr>
+                            <th>Variable Name</th>
+                            <th>Required</th>
+                            <th>Secret</th>
+                            <th>Default Value</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var env in spec.Configuration.EnvironmentVariables)
+                        {
+                            <tr>
+                                <td><code style="font-weight: 700; color: var(--primary-purple);">@env.Name</code></td>
+                                <td>@(env.Required ? "🔴 Yes" : "⚪ Optional")</td>
+                                <td>@(env.IsSecret ? "🔒 Secret" : "📄 Plain")</td>
+                                <td><code>@(env.DefaultValue ?? "N/A")</code></td>
+                                <td style="color: var(--text-secondary);">@env.Description</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Standard environment configuration.</p>
+            }
+
+            @if (spec.Configuration?.ConfigFiles != null && spec.Configuration.ConfigFiles.Count > 0)
+            {
+                <div class="saas-card-header">
+                    <h4 class="saas-card-title">Configuration Files & Schemas</h4>
+                    <span class="badge-clean-purple">@spec.Configuration.ConfigFiles.Count Files</span>
+                </div>
+
+                <table class="saas-table">
+                    <thead>
+                        <tr>
+                            <th>File Path</th>
+                            <th>Format</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var cf in spec.Configuration.ConfigFiles)
+                        {
+                            <tr>
+                                <td><code style="font-weight: 700; color: var(--primary-purple);">@cf.Path</code></td>
+                                <td><span class="badge-clean-purple">@cf.Format</span></td>
+                                <td style="color: var(--text-secondary);">@cf.Description</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+
+    <!-- TAB 5: Observability & Health -->
+    @if (_activeTab == "observability")
+    {
+        <div class="saas-card">
+            <div class="saas-card-header">
+                <h3 class="saas-card-title">Observability, Health & Telemetry</h3>
+                <span class="badge-clean-purple">Logging: @(spec.Observability?.Logging?.Framework ?? "Serilog / JSON")</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1.25rem;">
+                    <div style="font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;">📜 Structured Logging</div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Framework: <strong>@(spec.Observability?.Logging?.Framework ?? "Serilog")</strong></div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Format: @(spec.Observability?.Logging?.Format ?? "Structured JSON")</div>
+                    <div style="margin-top: 0.5rem; display: flex; gap: 0.35rem; flex-wrap: wrap;">
+                        @foreach (var sink in spec.Observability?.Logging?.Sinks ?? new List<string>())
+                        {
+                            <span class="badge-clean-purple">Sink: @sink</span>
+                        }
+                    </div>
+                </div>
+
+                <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1.25rem;">
+                    <div style="font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;">📊 Metrics & Tracing</div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Exporter: <strong>@(spec.Observability?.Metrics?.Exporter ?? "OpenTelemetry / Prometheus")</strong></div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Tracing: <strong>@(spec.Observability?.Tracing?.Protocol ?? "OpenTelemetry")</strong></div>
+                    @if (spec.Observability?.Metrics?.KeyMetrics != null && spec.Observability.Metrics.KeyMetrics.Count > 0)
+                    {
+                        <div style="margin-top: 0.5rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                            @foreach (var m in spec.Observability.Metrics.KeyMetrics.Take(3))
+                            {
+                                <code style="font-size: 0.75rem; background: #F0EDFF; color: var(--primary-purple); padding: 0.1rem 0.35rem; border-radius: 4px;">@m</code>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Health Check Probes -->
+            <div class="saas-card-header">
+                <h4 class="saas-card-title">Kubernetes / Cloud Health Probes</h4>
+                <span class="badge-clean-green">@(spec.Observability?.HealthChecks?.Count ?? 0) Probes</span>
+            </div>
+
+            <table class="saas-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Endpoint / Probe</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var probe in spec.Observability?.HealthChecks ?? new List<HealthCheckSpec>())
+                    {
+                        <tr>
+                            <td><span class="badge-clean-green">@probe.Type</span></td>
+                            <td><code>@probe.EndpointOrCommand</code></td>
+                            <td style="color: var(--text-secondary);">@probe.Description</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <!-- TAB 6: Security & OWASP Top 10 -->
+    @if (_activeTab == "security")
+    {
+        <div class="saas-card" style="margin-bottom: 1.5rem;">
+            <div class="saas-card-header">
+                <div>
+                    <h3 class="saas-card-title">Security Posture & OWASP Top 10 Audit</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Overall Rating: <strong>@(spec.Security?.OverallRating ?? "A")</strong> (Score: @(spec.Security?.SecurityScore ?? 90)/100)</div>
+                </div>
+                <span class="badge-clean-green">Security Grade @(spec.Security?.OverallRating ?? "A")</span>
+            </div>
+
+            <!-- OWASP Compliance Checklist -->
+            @if (spec.Security?.OwaspCompliance != null && spec.Security.OwaspCompliance.Count > 0)
+            {
+                <table class="saas-table" style="margin-bottom: 1.5rem;">
+                    <thead>
+                        <tr>
+                            <th>OWASP Category</th>
+                            <th>Status</th>
+                            <th>Evidence & Architectural Defense</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var owasp in spec.Security.OwaspCompliance)
+                        {
+                            <tr>
+                                <td><strong>@owasp.Category</strong></td>
+                                <td>
+                                    <span class="@(owasp.Status == "Compliant" ? "badge-clean-green" : "badge-clean-gold")">
+                                        @owasp.Status
+                                    </span>
+                                </td>
+                                <td style="color: var(--text-secondary); font-size: 0.88rem;">@owasp.Evidence</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <!-- Security Findings -->
+            @if (spec.Security?.Findings != null && spec.Security.Findings.Count > 0)
+            {
+                <div class="saas-card-header">
+                    <h4 class="saas-card-title">Active Security Findings</h4>
+                    <span class="badge-clean-red">@spec.Security.Findings.Count Findings</span>
+                </div>
+
+                @foreach (var f in spec.Security.Findings)
+                {
+                    <div style="background: #FFF5F5; border-left: 4px solid var(--accent-coral); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 0.85rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                            <strong style="color: #991B1B;">@f.Title</strong>
+                            <span class="badge-clean-red">@f.Severity</span>
+                        </div>
+                        <p style="font-size: 0.88rem; color: var(--text-main); margin-bottom: 0.5rem;">@f.Description</p>
+                        <div style="font-size: 0.82rem; color: #166534; background: #DCFCE7; padding: 0.4rem 0.75rem; border-radius: 6px;">
+                            <strong>Mitigation:</strong> @f.Mitigation
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    }
+
+    <!-- TAB 7: STRIDE Threat Model -->
+    @if (_activeTab == "threatmodel")
+    {
+        <div class="saas-card">
+            <div class="saas-card-header">
+                <div>
+                    <h3 class="saas-card-title">STRIDE Threat Modeling & Attack Surface Matrix</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Methodology: @(spec.ThreatModel?.Methodology ?? "Microsoft STRIDE")</div>
+                </div>
+                <span class="badge-clean-red">@(spec.ThreatModel?.Threats?.Count ?? 0) Active Threat Vectors</span>
+            </div>
+
+            <!-- Trust Boundaries -->
+            @if (spec.ThreatModel?.TrustBoundaries != null && spec.ThreatModel.TrustBoundaries.Count > 0)
+            {
+                <div class="saas-card-header" style="margin-top: 0.5rem;">
+                    <h4 class="saas-card-title">Architectural Trust Boundaries</h4>
+                    <span class="badge-clean-purple">@spec.ThreatModel.TrustBoundaries.Count Boundaries</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                    @foreach (var tb in spec.ThreatModel.TrustBoundaries)
+                    {
+                        <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1.1rem;">
+                            <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; margin-bottom: 0.35rem;">
+                                🛡️ @tb.Name
+                            </div>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">@tb.Description</p>
+                            @if (tb.AssetsInside != null && tb.AssetsInside.Count > 0)
+                            {
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
+                                    @foreach (var asset in tb.AssetsInside)
+                                    {
+                                        <span class="badge-clean-purple" style="font-size: 0.75rem;">@asset</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- Threats Table -->
+            <div class="saas-card-header">
+                <h4 class="saas-card-title">Discovered STRIDE Threat Vectors</h4>
+                <span class="badge-clean-gold">@(spec.ThreatModel?.Threats?.Count ?? 0) Vectors</span>
+            </div>
+
+            @if (spec.ThreatModel?.Threats != null && spec.ThreatModel.Threats.Count > 0)
+            {
+                <table class="saas-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>STRIDE Category</th>
+                            <th>Target Asset</th>
+                            <th>Severity</th>
+                            <th>Mitigation Control</th>
+                            <th>Residual Risk</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in spec.ThreatModel.Threats)
+                        {
+                            <tr>
+                                <td><span class="badge-clean-gold">@t.Id</span></td>
+                                <td><strong>@t.StrideCategory</strong></td>
+                                <td><code style="color: var(--primary-purple);">@t.TargetAsset</code></td>
+                                <td>
+                                    <span class="@(t.Severity == "Critical" || t.Severity == "High" ? "badge-clean-red" : "badge-clean-gold")">
+                                        @t.Severity
+                                    </span>
+                                </td>
+                                <td style="color: var(--text-secondary); font-size: 0.88rem;">@t.MitigationControl</td>
+                                <td><span class="badge-clean-green">@t.ResidualRisk</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p style="color: var(--accent-green); font-weight: 600;">✅ Zero active STRIDE threat vectors discovered for this service.</p>
+            }
+        </div>
+    }
+
+    <!-- TAB 8: Code Review -->
+    @if (_activeTab == "codereview")
+    {
+        <div class="saas-card">
+            <div class="saas-card-header">
+                <div>
+                    <h3 class="saas-card-title">Automated AI Code Review & Technical Audit</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Overall Summary: @(spec.CodeReview?.Summary ?? "Automated code analysis completed.")</div>
+                </div>
+                <span class="badge-clean-green">Review Grade @(spec.CodeReview?.ReviewGrade ?? "A") (Score @(spec.CodeReview?.ReviewScore ?? 90)/100)</span>
+            </div>
+
+            <!-- Strengths -->
+            @if (spec.CodeReview?.Strengths != null && spec.CodeReview.Strengths.Count > 0)
+            {
+                <div style="background: #F0FDF4; border-left: 4px solid var(--accent-green); padding: 1rem 1.25rem; border-radius: 8px; margin-bottom: 1.25rem;">
+                    <h4 style="color: #166534; font-size: 0.95rem; margin-bottom: 0.5rem; font-weight: 700;">✨ Architectural Strengths</h4>
+                    <ul style="padding-left: 1.25rem; color: var(--text-main); font-size: 0.88rem;">
+                        @foreach (var str in spec.CodeReview.Strengths)
+                        {
+                            <li style="margin-bottom: 0.25rem;">@str</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            <!-- Code Smells -->
+            @if (spec.CodeReview?.CodeSmells != null && spec.CodeReview.CodeSmells.Count > 0)
+            {
+                <div class="saas-card-header" style="margin-top: 1rem;">
+                    <h4 class="saas-card-title">Detected Code Smells & Anti-Patterns</h4>
+                    <span class="badge-clean-gold">@spec.CodeReview.CodeSmells.Count Smells</span>
+                </div>
+
+                <table class="saas-table" style="margin-bottom: 1.5rem;">
+                    <thead>
+                        <tr>
+                            <th>Smell Type</th>
+                            <th>Affected Component / File</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var smell in spec.CodeReview.CodeSmells)
+                        {
+                            <tr>
+                                <td><span class="badge-clean-gold">@smell.SmellType</span></td>
+                                <td><code>@smell.AffectedComponentOrFile</code></td>
+                                <td style="color: var(--text-secondary);">@smell.Description</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <!-- Detailed Review Findings -->
+            @if (spec.CodeReview?.Findings != null && spec.CodeReview.Findings.Count > 0)
+            {
+                <div class="saas-card-header">
+                    <h4 class="saas-card-title">Code Review Findings & Recommendations</h4>
+                    <span class="badge-clean-purple">@spec.CodeReview.Findings.Count Recommendations</span>
+                </div>
+
+                @foreach (var f in spec.CodeReview.Findings)
+                {
+                    <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                            <strong style="color: var(--text-main);">@f.Title</strong>
+                            <span class="badge-clean-purple">@f.Category • @f.Severity</span>
+                        </div>
+                        <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 0.4rem;">@f.Description</p>
+                        <div style="font-size: 0.82rem; color: var(--primary-purple); font-weight: 600;">
+                            💡 Recommendation: @f.Recommendation
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    }
+
+    <!-- TAB 9: SIG Quality Scorecard -->
+    @if (_activeTab == "quality")
+    {
+        <div class="saas-card">
+            <div class="saas-card-header">
+                <div>
+                    <h3 class="saas-card-title">SIG / ISO 25010 5-Star Maintainability Breakdown</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Software Improvement Group maintainability benchmark model</div>
+                </div>
+                <span class="badge-clean-gold">⭐ @((spec.Quality?.SigStars ?? 4.0).ToString("0.0")) / 5.0 Overall</span>
+            </div>
+
+            @if (spec.Quality?.Dimensions != null && spec.Quality.Dimensions.Count > 0)
+            {
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                    @foreach (var dim in spec.Quality.Dimensions)
+                    {
+                        <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1.25rem; text-align: center;">
+                            <div style="font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">@dim.Dimension</div>
+                            <div style="font-size: 1.6rem; font-weight: 800; color: var(--accent-gold); margin-top: 0.35rem;">
+                                @dim.Stars.ToString("0.0") ★
+                            </div>
+                            <div style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 0.35rem;">@dim.Evaluation</div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- Tech Debt Items -->
+            @if (spec.Quality?.TechDebtItems != null && spec.Quality.TechDebtItems.Count > 0)
+            {
+                <div class="saas-card-header">
+                    <h4 class="saas-card-title">Technical Debt & Modernization Backlog</h4>
+                    <span class="badge-clean-purple">@spec.Quality.TechDebtItems.Count Action Items</span>
+                </div>
+
+                <ul style="list-style: none; padding: 0;">
+                    @foreach (var debt in spec.Quality.TechDebtItems)
+                    {
+                        <li style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="color: var(--accent-gold); font-weight: bold;">⚡</span>
+                            <span style="color: var(--text-main); font-size: 0.9rem;">@debt</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+
+    <!-- TAB 10: Risk Summary & Blast Radius -->
+    @if (_activeTab == "risk")
+    {
+        <div class="saas-card">
+            <div class="saas-card-header">
+                <div>
+                    <h3 class="saas-card-title">Production Readiness & Blast Radius Risk</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">@spec.RiskSummary?.BlastRadiusEvaluation</div>
+                </div>
+                <span class="badge-clean-purple">Risk Level: @(spec.RiskSummary?.OverallRiskLevel ?? "Low")</span>
+            </div>
+
+            <!-- Risk Items -->
+            @if (spec.RiskSummary?.Risks != null && spec.RiskSummary.Risks.Count > 0)
+            {
+                <div class="saas-card-header">
+                    <h4 class="saas-card-title">Discovered Architectural Risks</h4>
+                    <span class="badge-clean-red">@spec.RiskSummary.Risks.Count Risks</span>
+                </div>
+
+                @foreach (var rf in spec.RiskSummary.Risks)
+                {
+                    <div style="background: var(--bg-subtle); border-left: 4px solid var(--accent-gold); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 0.85rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                            <strong style="color: var(--text-main);">@rf.RiskTitle</strong>
+                            <span class="badge-clean-gold">Level: @rf.RiskLevel • Likelihood: @rf.Likelihood</span>
+                        </div>
+                        <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 0.4rem;">@rf.Impact</p>
+                        @if (!string.IsNullOrWhiteSpace(rf.RequiredMitigation))
+                        {
+                            <div style="font-size: 0.82rem; color: #166534; background: #DCFCE7; padding: 0.35rem 0.65rem; border-radius: 6px;">
+                                <strong>Required Mitigation:</strong> @rf.RequiredMitigation
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    }
+
+    <!-- TAB 11: Living Specs & Invariants (Vendor Rebuild Studio) -->
+    @if (_activeTab == "livingdocs")
+    {
+        var fn = spec.FunctionalSpecs;
+
+        <div class="saas-card" style="margin-bottom: 1.5rem;">
+            <div class="saas-card-header">
+                <div>
+                    <h3 class="saas-card-title">📖 Engineering Rebuild Blueprint & Living Specs</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Comprehensive functional specifications & RFP blueprint for engineers and contractors</div>
+                </div>
+                <button class="saas-filter-pill active" style="background: var(--primary-purple); color: #FFF; font-weight: 700;" @onclick="ExportServiceRfpAsync">
+                    📥 Export Complete Vendor RFP (.md)
+                </button>
+            </div>
+
+            <!-- Sub-Section Pills -->
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-card);">
+                <button class="saas-filter-pill @(_livingSection == "usecases" ? "active" : "")" @onclick='() => _livingSection = "usecases"'>
+                    📋 Use Cases (@(fn?.UseCases?.Count ?? 0))
+                </button>
+                <button class="saas-filter-pill @(_livingSection == "gherkin" ? "active" : "")" @onclick='() => _livingSection = "gherkin"'>
+                    🧪 Gherkin BDD Tests (@(fn?.UseCases?.SelectMany(u => u.AcceptanceScenarios ?? new List<BddScenario>()).Count() ?? 0))
+                </button>
+                <button class="saas-filter-pill @(_livingSection == "statemachines" ? "active" : "")" @onclick='() => _livingSection = "statemachines"'>
+                    🔄 State Machines (@(fn?.StateMachines?.Count ?? 0))
+                </button>
+                <button class="saas-filter-pill @(_livingSection == "formulas" ? "active" : "")" @onclick='() => _livingSection = "formulas"'>
+                    📐 Formulas & Rules (@(fn?.BusinessRulesAndFormulas?.Count ?? 0))
+                </button>
+                <button class="saas-filter-pill @(_livingSection == "dictionary" ? "active" : "")" @onclick='() => _livingSection = "dictionary"'>
+                    🗄️ Data Dictionary (@(fn?.DataDictionary?.Count ?? 0))
+                </button>
+                <button class="saas-filter-pill @(_livingSection == "invariants" ? "active" : "")" @onclick='() => _livingSection = "invariants"'>
+                    🛡️ Concurrency (@(fn?.Invariants?.Count ?? 0))
+                </button>
+            </div>
+
+            @if (_livingSection == "usecases")
+            {
+                <div style="display: grid; grid-template-columns: 1fr; gap: 1rem;">
+                    @foreach (var uc in fn?.UseCases ?? new List<BusinessUseCase>())
+                    {
+                        <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1.25rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                                <h4 style="color: var(--primary-purple); font-size: 1.05rem; font-weight: 700;">
+                                    <span class="badge-clean-purple">@uc.Id</span> @uc.Title
+                                </h4>
+                                <span class="badge-clean-purple">Actor: @uc.PrimaryActor</span>
+                            </div>
+
+                            <p style="color: var(--text-main); font-size: 0.9rem; margin-bottom: 0.6rem;">
+                                <strong>Business Value:</strong> @uc.BusinessValue
+                            </p>
+
+                            @if (uc.InputDataContracts != null && uc.InputDataContracts.Count > 0)
+                            {
+                                <div style="margin-bottom: 0.5rem;">
+                                    <strong style="color: var(--text-secondary); font-size: 0.82rem;">📥 Input Data Contracts:</strong>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem;">
+                                        @foreach (var input in uc.InputDataContracts)
+                                        {
+                                            <code style="background: #F0EDFF; color: var(--primary-purple); padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.8rem;">@input</code>
+                                        }
+                                    </div>
+                                </div>
+                            }
+
+                            @if (uc.MainFlow != null && uc.MainFlow.Count > 0)
+                            {
+                                <div style="margin: 0.75rem 0;">
+                                    <strong style="color: var(--text-secondary); font-size: 0.82rem;">⚡ Execution Flow:</strong>
+                                    <ol style="padding-left: 1.25rem; font-size: 0.88rem; color: var(--text-main); margin-top: 0.25rem;">
+                                        @foreach (var step in uc.MainFlow)
+                                        {
+                                            <li style="margin-bottom: 0.2rem;">@step</li>
+                                        }
+                                    </ol>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(uc.ArchitecturalAdvice))
+                            {
+                                <div style="background: #FFFBEB; border-left: 3px solid var(--accent-gold); padding: 0.6rem 1rem; border-radius: 6px; margin-top: 0.5rem;">
+                                    <strong style="color: #92400E; font-size: 0.85rem;">💡 Rebuild Architecture Advice:</strong>
+                                    <span style="color: var(--text-main); font-size: 0.85rem; margin-left: 0.35rem;">@uc.ArchitecturalAdvice</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_livingSection == "gherkin")
+            {
+                var allGherkin = fn?.UseCases?.SelectMany(u => u.AcceptanceScenarios ?? new List<BddScenario>()).ToList() ?? new List<BddScenario>();
+                @if (allGherkin.Count > 0)
+                {
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1rem;">
+                        @foreach (var g in allGherkin)
+                        {
+                            <div style="background: #1E293B; color: #F8FAFC; border-radius: 12px; padding: 1.25rem; font-family: var(--font-mono); font-size: 0.85rem;">
+                                <div style="color: #38BDF8; font-weight: 700; margin-bottom: 0.5rem;">Scenario: @g.ScenarioTitle</div>
+                                <div style="color: #A7F3D0; margin-bottom: 0.25rem;">&nbsp;&nbsp;Given @g.Given</div>
+                                <div style="color: #FDE047; margin-bottom: 0.25rem;">&nbsp;&nbsp;When  @g.When</div>
+                                <div style="color: #F472B6;">&nbsp;&nbsp;Then  @g.Then</div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="background: var(--bg-subtle); border: 1px dashed var(--border-card); border-radius: 12px; padding: 2rem; text-align: center; color: var(--text-muted);">
+                        Acceptance scenarios inferred from functional use cases.
+                    </div>
+                }
+            }
+
+            @if (_livingSection == "statemachines")
+            {
+                var sms = fn?.StateMachines ?? new List<DomainStateMachine>();
+                @if (sms.Count > 0)
+                {
+                    @foreach (var sm in sms)
+                    {
+                        <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                                <h4 style="color: var(--primary-purple); font-size: 1.1rem; font-weight: 700;">🔄 State Model: @sm.EntityName</h4>
+                                <span class="badge-clean-purple">Initial: @sm.InitialState</span>
+                            </div>
+
+                            @if (sm.Transitions != null && sm.Transitions.Count > 0)
+                            {
+                                <table class="saas-table">
+                                    <thead>
+                                        <tr>
+                                            <th>From State</th>
+                                            <th>Trigger Event</th>
+                                            <th>To State</th>
+                                            <th>Guard Condition</th>
+                                            <th>Action Effect</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var t in sm.Transitions)
+                                        {
+                                            <tr>
+                                                <td><code>@t.FromState</code></td>
+                                                <td><strong>@t.TriggerEvent</strong></td>
+                                                <td><span class="badge-clean-purple">@t.ToState</span></td>
+                                                <td style="color: var(--text-secondary);">@(t.GuardCondition ?? "-")</td>
+                                                <td style="color: #15803D;">@(t.ActionEffect ?? "-")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div style="background: var(--bg-subtle); border: 1px dashed var(--border-card); border-radius: 12px; padding: 2rem; text-align: center; color: var(--text-muted);">
+                        State models governed by use case mutation flows.
+                    </div>
+                }
+            }
+
+            @if (_livingSection == "formulas")
+            {
+                var formulas = fn?.BusinessRulesAndFormulas ?? new List<BusinessRuleSpecification>();
+                @if (formulas.Count > 0)
+                {
+                    <table class="saas-table">
+                        <thead>
+                            <tr>
+                                <th>Rule ID</th>
+                                <th>Category</th>
+                                <th>Title</th>
+                                <th>Formula / Logic</th>
+                                <th>Validation Constraint</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var ruleItem in formulas)
+                            {
+                                <tr>
+                                    <td><span class="badge-clean-purple">@ruleItem.RuleId</span></td>
+                                    <td><span class="badge-clean-gold">@ruleItem.Category</span></td>
+                                    <td><strong>@ruleItem.RuleTitle</strong></td>
+                                    <td><code style="background: #F0EDFF; color: var(--primary-purple); padding: 0.2rem 0.5rem; border-radius: 6px;">@ruleItem.FormalLogicOrFormula</code></td>
+                                    <td style="color: var(--text-secondary); font-size: 0.85rem;">@ruleItem.ConstraintOrValidation</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <div style="background: var(--bg-subtle); border: 1px dashed var(--border-card); border-radius: 12px; padding: 2rem; text-align: center; color: var(--text-muted);">
+                        Calculation logic extracted inside use case definitions.
+                    </div>
+                }
+            }
+
+            @if (_livingSection == "dictionary")
+            {
+                var dictEntities = fn?.DataDictionary ?? new List<DataDictionaryEntity>();
+                @if (dictEntities.Count > 0)
+                {
+                    @foreach (var entity in dictEntities)
+                    {
+                        <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.25rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <h4 style="color: var(--primary-purple); font-size: 1.1rem; font-weight: 700;">🗄️ Entity: @entity.EntityName</h4>
+                                <span class="badge-clean-gold">PK: @entity.PrimaryKey</span>
+                            </div>
+                            <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 0.75rem;">@entity.Description</p>
+
+                            <table class="saas-table">
+                                <thead>
+                                    <tr>
+                                        <th>Field</th>
+                                        <th>Type</th>
+                                        <th>Required</th>
+                                        <th>Constraints</th>
+                                        <th>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var f in entity.Fields)
+                                    {
+                                        <tr>
+                                            <td><code>@f.Name</code></td>
+                                            <td><span class="badge-clean-purple">@f.DataType</span></td>
+                                            <td>@(f.Required ? "✅ Yes" : "No")</td>
+                                            <td style="color: var(--text-secondary);">@(f.Constraints ?? "-")</td>
+                                            <td style="color: var(--text-main); font-size: 0.85rem;">@f.Description</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div style="background: var(--bg-subtle); border: 1px dashed var(--border-card); border-radius: 12px; padding: 2rem; text-align: center; color: var(--text-muted);">
+                        Entity contracts defined in APIs and data stores.
+                    </div>
+                }
+            }
+
+            @if (_livingSection == "invariants")
+            {
+                var invariants = fn?.Invariants ?? new List<SystemInvariant>();
+                @if (invariants.Count > 0)
+                {
+                    <table class="saas-table">
+                        <thead>
+                            <tr>
+                                <th>Invariant ID</th>
+                                <th>Description</th>
+                                <th>Enforcement Mechanism</th>
+                                <th>Concurrency / Locking</th>
+                                <th>Severity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var inv in invariants)
+                            {
+                                <tr>
+                                    <td><span class="badge-clean-purple">@inv.Id</span></td>
+                                    <td><strong>@inv.Description</strong></td>
+                                    <td style="color: var(--text-secondary);">@inv.EnforcementMechanism</td>
+                                    <td><code>@inv.ConcurrencyRequirement</code></td>
+                                    <td><span class="badge-clean-red">@inv.ViolationSeverity</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <div style="background: var(--bg-subtle); border: 1px dashed var(--border-card); border-radius: 12px; padding: 2rem; text-align: center; color: var(--text-muted);">
+                        ACID database transaction guarantees enforced across service operations.
+                    </div>
+                }
+            }
+        </div>
+    }
+
+    <!-- TAB 12: History & Trends (Improvement / Degradation Tracking) -->
+    @if (_activeTab == "history")
+    {
+        var history = _historySummary ?? new ServiceHistorySummary();
+        var snaps = history.Snapshots;
+        var latest = history.LatestSnapshot;
+        var prev = history.PreviousSnapshot;
+
+        <!-- KPI Degradation / Improvement Cockpit -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <!-- Quality Metric Card -->
+            <div class="saas-card" style="padding: 1.25rem;">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; display: flex; justify-content: space-between;">
+                    <span>SIG Quality Stars</span>
+                    <span>⭐</span>
+                </div>
+                <div style="font-size: 1.85rem; font-weight: 800; color: var(--text-main); margin: 0.4rem 0 0.2rem 0;">
+                    @((latest?.SigStars ?? 4.0).ToString("0.0")) <span style="font-size: 1rem; color: var(--text-muted); font-weight: 500;">/ 5.0</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
+                    @if (latest != null && prev != null)
+                    {
+                        var d = latest.DeltaSigStars;
+                        if (d > 0)
+                        {
+                            <span class="badge-clean-green">▲ +@d.ToString("0.0") Improvement</span>
+                        }
+                        else if (d < 0)
+                        {
+                            <span class="badge-clean-red" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;">▼ @d.ToString("0.0") Regression</span>
+                        }
+                        else
+                        {
+                            <span class="badge-clean-purple">● Stable</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="badge-clean-purple">Baseline Scan</span>
+                    }
+                </div>
+            </div>
+
+            <!-- Tech Debt Card -->
+            <div class="saas-card" style="padding: 1.25rem;">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; display: flex; justify-content: space-between;">
+                    <span>Technical Debt Ratio</span>
+                    <span>📉</span>
+                </div>
+                <div style="font-size: 1.85rem; font-weight: 800; color: var(--text-main); margin: 0.4rem 0 0.2rem 0;">
+                    @((latest?.TechDebtRatio ?? 0.0).ToString("0.0"))%
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
+                    @if (latest != null && prev != null)
+                    {
+                        var d = latest.DeltaTechDebtRatio;
+                        if (d < 0)
+                        {
+                            <span class="badge-clean-green">▼ @Math.Abs(d).ToString("0.0")% Reduced</span>
+                        }
+                        else if (d > 0)
+                        {
+                            <span class="badge-clean-red" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;">▲ +@d.ToString("0.0")% Increased</span>
+                        }
+                        else
+                        {
+                            <span class="badge-clean-purple">● Stable</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="badge-clean-purple">Baseline Scan</span>
+                    }
+                </div>
+            </div>
+
+            <!-- STRIDE Threats Card -->
+            <div class="saas-card" style="padding: 1.25rem;">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; display: flex; justify-content: space-between;">
+                    <span>STRIDE Threat Posture</span>
+                    <span>🛡️</span>
+                </div>
+                <div style="font-size: 1.85rem; font-weight: 800; color: var(--text-main); margin: 0.4rem 0 0.2rem 0;">
+                    @(latest?.ThreatCount ?? 0) <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Threats</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
+                    @if (latest != null && prev != null)
+                    {
+                        var d = latest.DeltaThreats;
+                        if (d < 0)
+                        {
+                            <span class="badge-clean-green">▼ @Math.Abs(d) Resolved</span>
+                        }
+                        else if (d > 0)
+                        {
+                            <span class="badge-clean-red" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;">▲ +@d New Threats</span>
+                        }
+                        else
+                        {
+                            <span class="badge-clean-purple">● Unchanged</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="badge-clean-purple">Baseline Scan</span>
+                    }
+                </div>
+            </div>
+
+            <!-- Code Smells Card -->
+            <div class="saas-card" style="padding: 1.25rem;">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; display: flex; justify-content: space-between;">
+                    <span>Code Smells & Debt</span>
+                    <span>⚠️</span>
+                </div>
+                <div style="font-size: 1.85rem; font-weight: 800; color: var(--text-main); margin: 0.4rem 0 0.2rem 0;">
+                    @(latest?.CodeSmellCount ?? 0) <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Smells</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
+                    @if (latest != null && prev != null)
+                    {
+                        var d = latest.DeltaCodeSmells;
+                        if (d < 0)
+                        {
+                            <span class="badge-clean-green">▼ @Math.Abs(d) Fixed</span>
+                        }
+                        else if (d > 0)
+                        {
+                            <span class="badge-clean-red" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;">▲ +@d Added</span>
+                        }
+                        else
+                        {
+                            <span class="badge-clean-purple">● Stable</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="badge-clean-purple">Baseline Scan</span>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Interactive Multi-Metric SVG Timeline Graph -->
+        <div class="saas-card" style="margin-bottom: 1.5rem;">
+            <div class="saas-card-header" style="flex-wrap: wrap; gap: 0.75rem;">
+                <div>
+                    <h3 class="saas-card-title">📈 Metric Evolution & Degradation Timeline</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                        Tracking @snaps.Count scan snapshot(s) across commit history
+                    </div>
+                </div>
+
+                <!-- Metric Toggle Pills -->
+                <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                    <button class="saas-filter-pill @(_activeMetric == "stars" ? "active" : "")" @onclick='() => _activeMetric = "stars"'>
+                        ⭐ Quality Stars
+                    </button>
+                    <button class="saas-filter-pill @(_activeMetric == "threats" ? "active" : "")" @onclick='() => _activeMetric = "threats"'>
+                        🛡️ STRIDE Threats
+                    </button>
+                    <button class="saas-filter-pill @(_activeMetric == "smells" ? "active" : "")" @onclick='() => _activeMetric = "smells"'>
+                        ⚠️ Code Smells
+                    </button>
+                    <button class="saas-filter-pill @(_activeMetric == "debt" ? "active" : "")" @onclick='() => _activeMetric = "debt"'>
+                        📉 Debt Ratio %
+                    </button>
+                    <button class="saas-filter-pill @(_activeMetric == "loc" ? "active" : "")" @onclick='() => _activeMetric = "loc"'>
+                        📊 Lines of Code
+                    </button>
+                </div>
+            </div>
+
+            <!-- SVG Time Series Canvas -->
+            <div style="background: #FAFCFF; border: 1px solid var(--border-card); border-radius: 12px; padding: 1.5rem; overflow-x: auto; position: relative;">
+                @{
+                    var chartPoints = CalculateChartPoints(snaps, _activeMetric, 860, 220, 60, 30);
+                    var strokeColor = _activeMetric switch
+                    {
+                        "stars" => "#6366F1",
+                        "threats" => "#EF4444",
+                        "smells" => "#F59E0B",
+                        "debt" => "#8B5CF6",
+                        _ => "#10B981"
+                    };
+                    var fillColor = _activeMetric switch
+                    {
+                        "stars" => "rgba(99, 102, 241, 0.12)",
+                        "threats" => "rgba(239, 68, 68, 0.12)",
+                        "smells" => "rgba(245, 158, 11, 0.12)",
+                        "debt" => "rgba(139, 92, 246, 0.12)",
+                        _ => "rgba(16, 185, 129, 0.12)"
+                    };
+                }
+
+                <svg viewBox="0 0 960 280" style="width: 100%; height: 280px; min-width: 600px; display: block; overflow: visible;">
+                    <defs>
+                        <linearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stop-color="@strokeColor" stop-opacity="0.25" />
+                            <stop offset="100%" stop-color="@strokeColor" stop-opacity="0.0" />
+                        </linearGradient>
+                    </defs>
+
+                    <!-- Horizontal Grid Lines -->
+                    @for (int i = 0; i <= 4; i++)
+                    {
+                        var y = 30 + (220 / 4) * i;
+                        var valLabel = GetYAxisLabel(_activeMetric, snaps, 4 - i);
+                        <line x1="60" y1="@y" x2="920" y2="@y" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4" />
+                        @((MarkupString)$"<text x=\"50\" y=\"{y + 4}\" font-size=\"11\" fill=\"#94A3B8\" text-anchor=\"end\" font-family=\"monospace\">{valLabel}</text>")
+                    }
+
+                    <!-- Area Under Curve -->
+                    @if (chartPoints.Count > 1)
+                    {
+                        var areaPath = $"M {chartPoints.First().X:0.0},250 " + string.Join(" ", chartPoints.Select(p => $"L {p.X:0.0},{p.Y:0.0}")) + $" L {chartPoints.Last().X:0.0},250 Z";
+                        <path d="@areaPath" fill="url(#chartGradient)" />
+                    }
+
+                    <!-- Trend Polyline -->
+                    @if (chartPoints.Count > 1)
+                    {
+                        var linePoints = string.Join(" ", chartPoints.Select(p => $"{p.X:0.0},{p.Y:0.0}"));
+                        <polyline points="@linePoints" fill="none" stroke="@strokeColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                    }
+
+                    <!-- Data Nodes (Circles) -->
+                    @for (int i = 0; i < chartPoints.Count; i++)
+                    {
+                        var pt = chartPoints[i];
+                        var idx = i;
+                        var isHovered = _hoveredIndex == idx;
+                        <circle cx="@pt.X" cy="@pt.Y" r="@(isHovered ? 7 : 5)"
+                                fill="@(isHovered ? strokeColor : "white")"
+                                stroke="@strokeColor" stroke-width="2.5"
+                                style="cursor: pointer; transition: all 0.2s ease;"
+                                @onmouseenter="() => _hoveredIndex = idx"
+                                @onmouseleave="() => _hoveredIndex = null" />
+
+                        <!-- X-Axis Labels -->
+                        @((MarkupString)$"<text x=\"{pt.X}\" y=\"270\" font-size=\"10.5\" fill=\"#64748B\" text-anchor=\"middle\" font-family=\"monospace\">{pt.Snapshot.Timestamp:MM/dd HH:mm}</text>")
+                    }
+                </svg>
+
+                <!-- Tooltip Popup -->
+                @if (_hoveredIndex.HasValue && _hoveredIndex.Value >= 0 && _hoveredIndex.Value < chartPoints.Count)
+                {
+                    var activePt = chartPoints[_hoveredIndex.Value];
+                    var snap = activePt.Snapshot;
+                    <div style="position: absolute; left: @(activePt.X - 10)px; top: @(activePt.Y - 50)px; transform: translateX(-50%); background: #1E293B; color: white; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; box-shadow: 0 10px 25px rgba(0,0,0,0.2); pointer-events: none; white-space: nowrap; z-index: 10;">
+                        <div style="font-weight: 700; color: #93C5FD;">@snap.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</div>
+                        <div style="margin-top: 0.2rem;">Commit: <code style="color: #FCD34D;">@(snap.GitCommitSha?.Length >= 7 ? snap.GitCommitSha[..7] : "head")</code></div>
+                        <div style="margin-top: 0.2rem; font-weight: 700;">
+                            @GetMetricDisplay(_activeMetric, snap)
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Snapshot Diff Inspector (Side-by-Side Comparison) -->
+        <div class="saas-card" style="margin-bottom: 1.5rem;">
+            <div class="saas-card-header">
+                <div>
+                    <h3 class="saas-card-title">🔍 Point-in-Time Snapshot Diff Inspector</h3>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                        Compare metrics, security findings, and architecture between any two historical scans
+                    </div>
+                </div>
+            </div>
+
+            <!-- Diff Selectors -->
+            <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: center; margin-bottom: 1.5rem; background: var(--bg-subtle); padding: 1.25rem; border-radius: 12px; border: 1px solid var(--border-card);">
+                <div>
+                    <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 0.35rem;">
+                        SNAPSHOT A (Baseline)
+                    </label>
+                    <select class="topbar-search-input" style="width: 100%; font-size: 0.88rem;" @bind="_diffSnapshotA">
+                        @foreach (var s in snaps)
+                        {
+                            <option value="@s.SnapshotId">
+                                @s.Timestamp.ToString("yyyy-MM-dd HH:mm:ss") (@(s.GitCommitSha?.Length >= 7 ? s.GitCommitSha[..7] : "head")) — @s.SigStars.ToString("0.0")★
+                            </option>
+                        }
+                    </select>
+                </div>
+
+                <div style="font-size: 1.5rem; color: var(--text-muted); font-weight: 700;">
+                    ➔
+                </div>
+
+                <div>
+                    <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 0.35rem;">
+                        SNAPSHOT B (Comparison)
+                    </label>
+                    <select class="topbar-search-input" style="width: 100%; font-size: 0.88rem;" @bind="_diffSnapshotB">
+                        @foreach (var s in snaps)
+                        {
+                            <option value="@s.SnapshotId">
+                                @s.Timestamp.ToString("yyyy-MM-dd HH:mm:ss") (@(s.GitCommitSha?.Length >= 7 ? s.GitCommitSha[..7] : "head")) — @s.SigStars.ToString("0.0")★
+                            </option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            @{
+                var snapA = snaps.FirstOrDefault(s => s.SnapshotId == _diffSnapshotA) ?? snaps.FirstOrDefault();
+                var snapB = snaps.FirstOrDefault(s => s.SnapshotId == _diffSnapshotB) ?? snaps.LastOrDefault();
+            }
+
+            @if (snapA != null && snapB != null)
+            {
+                <table class="saas-table">
+                    <thead>
+                        <tr>
+                            <th>Metric Dimension</th>
+                            <th>Snapshot A (@(snapA.GitCommitSha?.Length >= 7 ? snapA.GitCommitSha[..7] : "Baseline"))</th>
+                            <th>Snapshot B (@(snapB.GitCommitSha?.Length >= 7 ? snapB.GitCommitSha[..7] : "Comparison"))</th>
+                            <th style="text-align: right;">Variance / Delta</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>⭐ SIG Quality Stars</strong></td>
+                            <td><span class="badge-clean-gold">@snapA.SigStars.ToString("0.0") / 5.0</span></td>
+                            <td><span class="badge-clean-gold">@snapB.SigStars.ToString("0.0") / 5.0</span></td>
+                            <td style="text-align: right;">
+                                @{
+                                    var dStars = Math.Round(snapB.SigStars - snapA.SigStars, 2);
+                                }
+                                @if (dStars > 0)
+                                {
+                                    <span class="badge-clean-green">▲ +@dStars.ToString("0.0") Improvement</span>
+                                }
+                                else if (dStars < 0)
+                                {
+                                    <span class="badge-clean-red" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;">▼ @dStars.ToString("0.0") Degradation</span>
+                                }
+                                else
+                                {
+                                    <span class="badge-clean-purple">● 0.0</span>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>📉 Technical Debt Ratio</strong></td>
+                            <td>@snapA.TechDebtRatio.ToString("0.0")%</td>
+                            <td>@snapB.TechDebtRatio.ToString("0.0")%</td>
+                            <td style="text-align: right;">
+                                @{
+                                    var dDebt = Math.Round(snapB.TechDebtRatio - snapA.TechDebtRatio, 2);
+                                }
+                                @if (dDebt < 0)
+                                {
+                                    <span class="badge-clean-green">▼ @Math.Abs(dDebt).ToString("0.0")% Debt Reduced</span>
+                                }
+                                else if (dDebt > 0)
+                                {
+                                    <span class="badge-clean-red" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;">▲ +@dDebt.ToString("0.0")% Debt Added</span>
+                                }
+                                else
+                                {
+                                    <span class="badge-clean-purple">● 0.0%</span>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>🛡️ STRIDE Threat Vectors</strong></td>
+                            <td>@snapA.ThreatCount Threats (@snapA.CriticalThreatsCount Critical)</td>
+                            <td>@snapB.ThreatCount Threats (@snapB.CriticalThreatsCount Critical)</td>
+                            <td style="text-align: right;">
+                                @{
+                                    var dThreats = snapB.ThreatCount - snapA.ThreatCount;
+                                }
+                                @if (dThreats < 0)
+                                {
+                                    <span class="badge-clean-green">▼ @Math.Abs(dThreats) Threats Eliminated</span>
+                                }
+                                else if (dThreats > 0)
+                                {
+                                    <span class="badge-clean-red" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;">▲ +@dThreats Threats Added</span>
+                                }
+                                else
+                                {
+                                    <span class="badge-clean-purple">● 0</span>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>⚠️ Code Smells Count</strong></td>
+                            <td>@snapA.CodeSmellCount Smells</td>
+                            <td>@snapB.CodeSmellCount Smells</td>
+                            <td style="text-align: right;">
+                                @{
+                                    var dSmells = snapB.CodeSmellCount - snapA.CodeSmellCount;
+                                }
+                                @if (dSmells < 0)
+                                {
+                                    <span class="badge-clean-green">▼ @Math.Abs(dSmells) Smells Refactored</span>
+                                }
+                                else if (dSmells > 0)
+                                {
+                                    <span class="badge-clean-red" style="background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;">▲ +@dSmells Smells Introduced</span>
+                                }
+                                else
+                                {
+                                    <span class="badge-clean-purple">● 0</span>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>🔌 API Endpoints Exposed</strong></td>
+                            <td>@snapA.ApiEndpointCount Endpoints</td>
+                            <td>@snapB.ApiEndpointCount Endpoints</td>
+                            <td style="text-align: right;">
+                                @{
+                                    var dEp = snapB.ApiEndpointCount - snapA.ApiEndpointCount;
+                                }
+                                <span class="badge-clean-purple">@(dEp >= 0 ? $"+{dEp}" : dEp.ToString()) Endpoints</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>📊 Lines of Code (LoC)</strong></td>
+                            <td>@snapA.TotalLinesOfCode.ToString("N0") LoC</td>
+                            <td>@snapB.TotalLinesOfCode.ToString("N0") LoC</td>
+                            <td style="text-align: right;">
+                                @{
+                                    var dLoc = snapB.TotalLinesOfCode - snapA.TotalLinesOfCode;
+                                }
+                                <span class="badge-clean-purple">@(dLoc >= 0 ? $"+{dLoc:N0}" : $"{dLoc:N0}") LoC</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <!-- Full Scan History Changelog Table -->
+        <div class="saas-card">
+            <div class="saas-card-header">
+                <h3 class="saas-card-title">📜 Historical Scan Audit Log</h3>
+                <span class="badge-clean-purple">@snaps.Count Historical Snapshots Recorded</span>
+            </div>
+
+            <table class="saas-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Git Commit</th>
+                        <th>Branch</th>
+                        <th>Quality Stars</th>
+                        <th>STRIDE Threats</th>
+                        <th>Code Smells</th>
+                        <th>LoC</th>
+                        <th style="text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in snaps.AsEnumerable().Reverse())
+                    {
+                        var isLatest = s == latest;
+                        <tr>
+                            <td>
+                                <strong>@s.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</strong>
+                                @if (isLatest)
+                                {
+                                    <span class="badge-clean-green" style="margin-left: 0.5rem;">Latest</span>
+                                }
+                            </td>
+                            <td>
+                                <code style="font-family: var(--font-mono); color: var(--primary-purple);">
+                                    @(s.GitCommitSha?.Length >= 7 ? s.GitCommitSha[..7] : "head")
+                                </code>
+                            </td>
+                            <td><span class="badge-clean-purple">@(s.GitBranch ?? "master")</span></td>
+                            <td>
+                                <span class="badge-clean-gold">⭐ @s.SigStars.ToString("0.0")</span>
+                                @if (s.DeltaSigStars != 0)
+                                {
+                                    <span style="font-size: 0.75rem; color: @(s.DeltaSigStars > 0 ? "#10B981" : "#EF4444"); margin-left: 0.25rem;">
+                                        (@(s.DeltaSigStars > 0 ? $"+{s.DeltaSigStars:0.0}" : $"{s.DeltaSigStars:0.0}"))
+                                    </span>
+                                }
+                            </td>
+                            <td>
+                                @s.ThreatCount
+                                @if (s.DeltaThreats != 0)
+                                {
+                                    <span style="font-size: 0.75rem; color: @(s.DeltaThreats < 0 ? "#10B981" : "#EF4444"); margin-left: 0.25rem;">
+                                        (@(s.DeltaThreats > 0 ? $"+{s.DeltaThreats}" : $"{s.DeltaThreats}"))
+                                    </span>
+                                }
+                            </td>
+                            <td>
+                                @s.CodeSmellCount
+                                @if (s.DeltaCodeSmells != 0)
+                                {
+                                    <span style="font-size: 0.75rem; color: @(s.DeltaCodeSmells < 0 ? "#10B981" : "#EF4444"); margin-left: 0.25rem;">
+                                        (@(s.DeltaCodeSmells > 0 ? $"+{s.DeltaCodeSmells}" : $"{s.DeltaCodeSmells}"))
+                                    </span>
+                                }
+                            </td>
+                            <td style="font-family: var(--font-mono);">@s.TotalLinesOfCode.ToString("N0")</td>
+                            <td style="text-align: right;">
+                                <button class="saas-filter-pill" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;" @onclick="() => { _diffSnapshotB = s.SnapshotId; }">
+                                    Set as Diff Target
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <!-- TAB: Hosting & Infrastructure Topology -->
+    @if (_activeTab == "deployment")
+    {
+        <div class="saas-card" style="margin-bottom: 1.5rem;">
+            <div class="saas-card-header">
+                <div>
+                    <h2 class="saas-card-title">🚀 Runtime Hosting & Deployment Infrastructure</h2>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">
+                        Live operational topology ingested via ArgoCD GitOps, CI/CD pipelines, or VM provisioning webhooks.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <span class="badge-clean-purple">@(_deployments.Count) Active Target(s)</span>
+                </div>
+            </div>
+
+            @if (_deployments == null || _deployments.Count == 0)
+            {
+                <div style="text-align: center; padding: 3rem 1.5rem; background: var(--bg-card); border-radius: 12px; border: 1px dashed var(--border-card);">
+                    <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🌐</div>
+                    <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--text-main);">No Runtime Deployments Reported Yet</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.9rem; max-width: 600px; margin: 0.5rem auto 1.5rem;">
+                        This microservice is cataloged from source code. To map its live Kubernetes cluster, namespace, or legacy VM host, report its deployment via HTTP webhook.
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1.25rem; margin-top: 1rem;">
+                    @foreach (var dep in _deployments)
+                    {
+                        var isK8s = dep.Platform.Equals("Kubernetes", StringComparison.OrdinalIgnoreCase);
+                        var isPublic = dep.Ingress?.Exposure?.Equals("Public", StringComparison.OrdinalIgnoreCase) == true;
+
+                        <div class="saas-card" style="border: 1px solid var(--border-card); background: #FAF5FF; padding: 1.25rem; border-radius: 12px;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                <div>
+                                    <span class="badge-clean-purple" style="font-weight: 700; text-transform: uppercase;">@dep.Environment</span>
+                                    <span class="badge-clean-green" style="margin-left: 0.35rem;">@(isK8s ? "☸️ Kubernetes" : $"🖥️ {dep.Platform}")</span>
+                                </div>
+                                @if (isPublic)
+                                {
+                                    <span class="badge-clean-green" style="font-size: 0.75rem;">🌍 Public Ingress</span>
+                                }
+                                else
+                                {
+                                    <span class="badge-clean-purple" style="font-size: 0.75rem;">🔒 Internal Only</span>
+                                }
+                            </div>
+
+                            <div style="margin-top: 1rem; font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                                @if (isK8s)
+                                {
+                                    <div>🏛️ Cluster: <strong>@(string.IsNullOrWhiteSpace(dep.ClusterOrHost) ? "k8s-cluster" : dep.ClusterOrHost)</strong></div>
+                                    <div>📦 Namespace: <code>@(string.IsNullOrWhiteSpace(dep.NamespaceOrPath) ? "default" : dep.NamespaceOrPath)</code></div>
+                                }
+                                else
+                                {
+                                    <div>🖥️ Host / VM: <strong>@dep.ClusterOrHost</strong></div>
+                                    @if (!string.IsNullOrWhiteSpace(dep.IpAddress))
+                                    {
+                                        <div>🌐 IP Address: <code>@dep.IpAddress</code></div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(dep.Os))
+                                    {
+                                        <div>💻 OS: @dep.Os</div>
+                                    }
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(dep.Ingress?.PublicUrl))
+                                {
+                                    <div>🔗 Ingress URL: <a href="@dep.Ingress.PublicUrl" target="_blank" style="color: var(--primary-purple); font-weight: 600;">@dep.Ingress.PublicUrl</a></div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(dep.Ingress?.InternalHost))
+                                {
+                                    <div>📡 Internal DNS: <code>@dep.Ingress.InternalHost</code></div>
+                                }
+
+                                <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.06); margin: 0.5rem 0;" />
+
+                                <div style="font-size: 0.8rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 0.25rem;">
+                                    <div>🛠️ Orchestrator: <strong>@(dep.Orchestration?.Tool ?? "ArgoCD")</strong></div>
+                                    @if (!string.IsNullOrWhiteSpace(dep.Orchestration?.ImageOrArtifact))
+                                    {
+                                        <div>📦 Image/Artifact: <code style="font-size: 0.75rem;">@dep.Orchestration.ImageOrArtifact</code></div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(dep.Orchestration?.GitCommit))
+                                    {
+                                        <div>📌 Deployed Commit: <code>@(dep.Orchestration.GitCommit.Length >= 7 ? dep.Orchestration.GitCommit[..7] : dep.Orchestration.GitCommit)</code></div>
+                                    }
+                                    @if (dep.LastDeployedAt.HasValue)
+                                    {
+                                        <div>⏱️ Last Deployed: @dep.LastDeployedAt.Value.ToString("yyyy-MM-dd HH:mm UTC") by <em>@(dep.DeployedBy ?? "pipeline")</em></div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_coLocatedServices != null && _coLocatedServices.Count > 0)
+            {
+                <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-card);">
+                    <h3 style="font-size: 1.05rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.5rem;">
+                        🏘️ Co-Located Microservices on Shared Infrastructure (@_coLocatedServices.Count)
+                    </h3>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">
+                        These microservices share the same Kubernetes namespace or VM host. A compromise of the underlying node could impact all co-located workloads.
+                    </p>
+
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.6rem;">
+                        @foreach (var co in _coLocatedServices)
+                        {
+                            <a href="/catalog/@co.ServiceName" class="saas-filter-pill" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; background: #FFF; border-color: #DDD6FE;">
+                                <span>📦 @co.ServiceName</span>
+                                <span class="badge-clean-purple" style="font-size: 0.7rem;">@co.SharedResource</span>
+                            </a>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Integration Snippet -->
+            <div style="margin-top: 2rem; padding: 1.25rem; background: #F8FAFC; border-radius: 12px; border: 1px solid #E2E8F0;">
+                <h4 style="font-size: 0.95rem; font-weight: 600; color: #1E293B; margin-bottom: 0.5rem;">
+                    💡 How to Push Deployment Events from ArgoCD or CI/CD
+                </h4>
+                <p style="font-size: 0.85rem; color: #64748B; margin-bottom: 0.75rem;">
+                    Post a lightweight JSON payload to Atlas Server upon deployment completion:
+                </p>
+                <pre style="background: #0F172A; color: #38BDF8; padding: 1rem; border-radius: 8px; font-size: 0.8rem; overflow-x: auto; font-family: var(--font-mono); margin: 0;"><code>curl -X POST https://atlas.internal/api/v1/deployment/report \
+  -H "Content-Type: application/json" \
+  -d '{
+    "serviceName": "@meta.Name",
+    "environment": "production",
+    "platform": "Kubernetes",
+    "cluster": "k8s-prod-weu",
+    "namespace": "payments-core",
+    "tool": "ArgoCD",
+    "imageOrArtifact": "ghcr.io/org/@(meta.Name):v1.0.0",
+    "gitCommit": "@(commitSha.Length >= 7 ? commitSha[..7] : commitSha)",
+    "ingress": { "publicUrl": "https://api.domain.com/@(meta.Name)", "exposure": "Public" }
+  }'</code></pre>
+            </div>
+        </div>
+    }
+
+    <!-- TAB 13: Raw Manifest -->
+    @if (_activeTab == "manifest")
+    {
+        <div class="saas-card">
+            <div class="saas-card-header">
+                <h3 class="saas-card-title">atlas-catalog-item.yaml</h3>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="saas-filter-pill active" @onclick="CopyYamlToClipboard">
+                        @(_copied ? "✅ Copied!" : "📋 Copy YAML")
+                    </button>
+                    <a href="/api/v1/catalog/resources/@meta.Name/yaml" download="@($"{meta.Name}.atlas-catalog-item.yaml")" class="saas-filter-pill" style="text-decoration: none;">
+                        💾 Download File
+                    </a>
+                </div>
+            </div>
+
+            <pre style="background: #1E293B; border-radius: 12px; padding: 1.5rem; overflow-x: auto; color: #F1F5F9; font-family: var(--font-mono); font-size: 0.85rem; max-height: 600px;"><code>@RawYaml</code></pre>
+        </div>
+    }
+}
+
+@inject ServerCacheRepository CacheRepo
+
+@code {
+    [Parameter]
+    public string ServiceName { get; set; } = string.Empty;
+
+    private AtlasResource? Resource;
+    private ServiceHistorySummary? _historySummary;
+    private string _activeTab = "architecture";
+    private string _activeDiagramType = "component";
+    private string _livingSection = "usecases";
+    private string _activeMetric = "stars";
+    private string _diffSnapshotA = "";
+    private string _diffSnapshotB = "";
+    private int? _hoveredIndex = null;
+    private bool _copied;
+    private string RawYaml = string.Empty;
+    private bool _showDeleteConfirm;
+    private bool _isDeleting;
+    private List<EnvironmentDeployment> _deployments = new();
+    private List<CoLocatedServiceSummary> _coLocatedServices = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Resource = SpecRepo.GetByName(ServiceName);
+        RawYaml = SpecRepo.GetRawYaml(ServiceName) ?? "";
+        _historySummary = SpecRepo.GetHistory(ServiceName);
+
+        if (_historySummary?.Snapshots != null && _historySummary.Snapshots.Count > 0)
+        {
+            if (string.IsNullOrWhiteSpace(_diffSnapshotA))
+            {
+                _diffSnapshotA = _historySummary.Snapshots.First().SnapshotId;
+            }
+            if (string.IsNullOrWhiteSpace(_diffSnapshotB))
+            {
+                _diffSnapshotB = _historySummary.Snapshots.Last().SnapshotId;
+            }
+        }
+
+        try
+        {
+            _deployments = await GraphService.GetDeploymentsForServiceAsync(ServiceName);
+            _coLocatedServices = await GraphService.GetCoLocatedServicesAsync(ServiceName);
+        }
+        catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_activeTab == "architecture")
+        {
+            await RenderActiveDiagram();
+        }
+    }
+
+    private async Task SetTab(string tab)
+    {
+        _activeTab = tab;
+        StateHasChanged();
+        await Task.Delay(50);
+        if (tab == "architecture")
+        {
+            await RenderActiveDiagram();
+        }
+    }
+
+    private async Task SwitchDiagram(string type)
+    {
+        _activeDiagramType = type;
+        StateHasChanged();
+        await Task.Yield();
+        await RenderActiveDiagram();
+    }
+
+    private async Task CopyActiveMermaid()
+    {
+        if (Resource?.Spec?.Architecture == null) return;
+        var arch = Resource.Spec.Architecture;
+        string mermaid = _activeDiagramType switch
+        {
+            "context" => !string.IsNullOrWhiteSpace(arch.ContextDiagram) ? arch.ContextDiagram : arch.MermaidDiagram,
+            "dataflow" => !string.IsNullOrWhiteSpace(arch.DataFlowDiagram) ? arch.DataFlowDiagram : arch.MermaidDiagram,
+            _ => !string.IsNullOrWhiteSpace(arch.ComponentDiagram) ? arch.ComponentDiagram : arch.MermaidDiagram
+        };
+        if (string.IsNullOrWhiteSpace(mermaid))
+        {
+            mermaid = arch.MermaidDiagram ?? "";
+        }
+
+        if (!string.IsNullOrWhiteSpace(mermaid))
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", mermaid);
+        }
+    }
+
+    private async Task ExportSvg(string elementId)
+    {
+        await JS.InvokeVoidAsync("exportDiagramSvg", elementId, $"{ServiceName}-{_activeDiagramType}-c4");
+    }
+
+    private async Task RenderActiveDiagram()
+    {
+        if (Resource?.Spec?.Architecture == null) return;
+        var arch = Resource.Spec.Architecture;
+
+        string mermaid = _activeDiagramType switch
+        {
+            "context" => !string.IsNullOrWhiteSpace(arch.ContextDiagram) ? arch.ContextDiagram : arch.MermaidDiagram,
+            "dataflow" => !string.IsNullOrWhiteSpace(arch.DataFlowDiagram) ? arch.DataFlowDiagram : arch.MermaidDiagram,
+            _ => !string.IsNullOrWhiteSpace(arch.ComponentDiagram) ? arch.ComponentDiagram : arch.MermaidDiagram
+        };
+
+        if (string.IsNullOrWhiteSpace(mermaid))
+        {
+            mermaid = arch.MermaidDiagram ?? "";
+        }
+
+        if (!string.IsNullOrWhiteSpace(mermaid))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("renderMermaid", "service-c4-viewport", mermaid);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ServiceDetail] Render error: {ex.Message}");
+            }
+        }
+    }
+
+    private sealed class ChartPoint
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Value { get; set; }
+        public ServiceSnapshotRecord Snapshot { get; set; } = new();
+    }
+
+    private static List<ChartPoint> CalculateChartPoints(
+        List<ServiceSnapshotRecord> snaps,
+        string metric,
+        double width,
+        double height,
+        double padLeft,
+        double padTop)
+    {
+        var list = new List<ChartPoint>();
+        if (snaps == null || snaps.Count == 0) return list;
+
+        var values = snaps.Select(s => GetMetricRawValue(metric, s)).ToList();
+        var min = values.Min();
+        var max = values.Max();
+
+        if (metric == "stars")
+        {
+            min = Math.Min(min, 1.0);
+            max = 5.0;
+        }
+        else if (Math.Abs(max - min) < 0.0001)
+        {
+            min = 0;
+            max = Math.Max(max * 1.5, 10);
+        }
+
+        for (int i = 0; i < snaps.Count; i++)
+        {
+            var val = values[i];
+            var x = snaps.Count == 1 ? padLeft + width / 2 : padLeft + (i * width / (snaps.Count - 1));
+            var yRatio = (val - min) / Math.Max(0.001, max - min);
+            var y = padTop + height - (yRatio * height);
+
+            list.Add(new ChartPoint
+            {
+                X = Math.Round(x, 1),
+                Y = Math.Round(y, 1),
+                Value = val,
+                Snapshot = snaps[i]
+            });
+        }
+
+        return list;
+    }
+
+    private static double GetMetricRawValue(string metric, ServiceSnapshotRecord snap) => metric switch
+    {
+        "stars" => snap.SigStars,
+        "threats" => snap.ThreatCount,
+        "smells" => snap.CodeSmellCount,
+        "debt" => snap.TechDebtRatio,
+        "loc" => snap.TotalLinesOfCode,
+        _ => snap.SigStars
+    };
+
+    private static string GetMetricDisplay(string metric, ServiceSnapshotRecord snap) => metric switch
+    {
+        "stars" => $"Quality: {snap.SigStars:0.0} / 5.0 Stars",
+        "threats" => $"Threats: {snap.ThreatCount} Total ({snap.CriticalThreatsCount} Critical)",
+        "smells" => $"Code Smells: {snap.CodeSmellCount} Smells",
+        "debt" => $"Tech Debt: {snap.TechDebtRatio:0.0}% Ratio",
+        "loc" => $"Code Volume: {snap.TotalLinesOfCode:N0} LoC",
+        _ => $"{snap.SigStars:0.0} Stars"
+    };
+
+    private static string GetYAxisLabel(string metric, List<ServiceSnapshotRecord> snaps, int step)
+    {
+        if (snaps == null || snaps.Count == 0) return $"{step}";
+        var values = snaps.Select(s => GetMetricRawValue(metric, s)).ToList();
+        var min = values.Min();
+        var max = values.Max();
+
+        if (metric == "stars")
+        {
+            min = 1.0;
+            max = 5.0;
+        }
+        else if (Math.Abs(max - min) < 0.0001)
+        {
+            min = 0;
+            max = Math.Max(max * 1.5, 10);
+        }
+
+        var val = min + (step / 4.0) * (max - min);
+        return metric switch
+        {
+            "stars" => $"{val:0.0}★",
+            "debt" => $"{val:0.0}%",
+            "loc" => $"{val:N0}",
+            _ => $"{Math.Round(val)}"
+        };
+    }
+
+    private async Task CopyYamlToClipboard()
+    {
+        _copied = true;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", RawYaml);
+        StateHasChanged();
+        await Task.Delay(2000);
+        _copied = false;
+        StateHasChanged();
+    }
+
+    private async Task DownloadServiceSbomAsync()
+    {
+        if (Resource?.Spec?.Dependencies?.Sbom == null) return;
+        var json = System.Text.Json.JsonSerializer.Serialize(Resource.Spec.Dependencies.Sbom, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        await JS.InvokeVoidAsync("downloadFileFromText", $"{ServiceName}-cyclonedx-bom.json", json);
+    }
+
+    private async Task ExportServiceRfpAsync()
+    {
+        if (Resource == null) return;
+        var md = RfpService.GenerateMarkdownRfp(Resource);
+        await JS.InvokeVoidAsync("downloadFileFromText", $"{ServiceName}-vendor-rfp-blueprint.md", md);
+    }
+
+    private async Task DeleteServiceAsync()
+    {
+        _isDeleting = true;
+        StateHasChanged();
+
+        try
+        {
+            SpecRepo.Delete(ServiceName);
+            CacheRepo.DeleteServiceCache(ServiceName);
+            await GraphMapper.DeleteServiceFromGraphAsync(ServiceName);
+            Nav.NavigateTo("/catalog", forceLoad: true);
+        }
+        catch
+        {
+            _isDeleting = false;
+            _showDeleteConfirm = false;
+            StateHasChanged();
+        }
+    }
+}

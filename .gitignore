@@ -15,11 +15,19 @@ TestResults/
 *.coverage
 *.coveragexml
 
+## Configuration & Local Secrets
+appsettings.Development.json
+appsettings.local.json
+*.local.json
+
 ## Atlas Cache & Generated Output
 .atlas/cache/
-atlas.yaml
-atlas.html
+.atlas/
+.atlas-server/
+atlas*.yaml
+atlas*.html
 *.log
+out.txt
 
 ## OS / Temp
 [Tt]emp/

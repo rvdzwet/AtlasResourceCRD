@@ -1,0 +1,1545 @@
+@page "/sbom"
+@rendermode InteractiveServer
+@inject SpecDocumentRepository SpecRepo
+@inject FleetIndexService FleetIndex
+@inject VulnerabilityBackgroundSyncService SyncService
+@inject IJSRuntime JS
+@using Markdig
+
+<PageTitle>Software Supply Chain, SBOM & Vulnerability Cockpit - Atlas Enterprise Hub</PageTitle>
+
+<!-- Header in Clean SaaS Card -->
+<div class="saas-card" style="margin-bottom: 1.25rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h1 class="saas-card-title" style="font-size: 1.55rem; display: flex; align-items: center; gap: 0.5rem;">
+                🛡️ Software Supply Chain & Vulnerability Cockpit
+            </h1>
+            <p style="color: var(--text-secondary); margin-top: 0.25rem; font-size: 0.88rem;">
+                High-density CycloneDX 1.5 SBOM inventory, live OSV.dev / GHSA vulnerability tracking, and Lifecycle (LCM) version drift.
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+            <button class="saas-filter-pill @(_isSidebarOpen ? "active" : "")" style="padding: 0.5rem 0.95rem; font-size: 0.85rem;" @onclick="() => _isSidebarOpen = !_isSidebarOpen">
+                <span>🎛️ @(_isSidebarOpen ? "Hide Filters" : "Show Filters")</span>
+            </button>
+            <button class="saas-filter-pill" style="padding: 0.5rem 0.95rem; font-size: 0.85rem; background: var(--bg-subtle); color: var(--text-main); border: 1px solid var(--border-card);"
+                    @onclick="RescanFleetCvesAsync" disabled="@_isSyncing">
+                @if (_isSyncing)
+                {
+                    <span>🔄 Syncing OSV.dev...</span>
+                }
+                else
+                {
+                    <span>🔄 Re-scan Fleet CVEs</span>
+                }
+            </button>
+            <button class="saas-filter-pill" style="padding: 0.5rem 0.95rem; font-size: 0.85rem; background: var(--primary-purple); color: #fff !important; font-weight: 700; border: none;" @onclick="ExportFleetSbomAsync">
+                📥 Export Fleet CycloneDX
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_syncMessage))
+    {
+        <div style="margin-top: 0.75rem; padding: 0.6rem 0.9rem; border-radius: 6px; background: #ECFDF5; border: 1px solid #A7F3D0; color: #065F46; font-size: 0.84rem;">
+            @_syncMessage
+        </div>
+    }
+</div>
+
+<!-- 4 Top KPIs in Compact Grid -->
+<div class="kpi-grid" style="margin-bottom: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+    <div class="kpi-card" style="padding: 0.9rem 1.1rem;">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-purple" style="font-size: 1.25rem; width: 40px; height: 40px;">📦</div>
+            <div>
+                <div class="kpi-value" style="font-size: 1.45rem;">@TotalUniqueComponents</div>
+                <div class="kpi-label" style="font-size: 0.78rem;">Unique Components</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card" style="padding: 0.9rem 1.1rem;">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-coral" style="font-size: 1.25rem; width: 40px; height: 40px;">🚨</div>
+            <div>
+                <div class="kpi-value" style="font-size: 1.45rem; color: #DC2626;">@TotalCriticalHighCves</div>
+                <div class="kpi-label" style="font-size: 0.78rem;">Critical / High CVEs</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card" style="padding: 0.9rem 1.1rem;">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-gold" style="font-size: 1.25rem; width: 40px; height: 40px;">🔄</div>
+            <div>
+                <div class="kpi-value" style="font-size: 1.45rem;">@TotalOutdatedComponents</div>
+                <div class="kpi-label" style="font-size: 0.78rem;">LCM Drift (Outdated)</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card" style="padding: 0.9rem 1.1rem;">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-cyan" style="font-size: 1.25rem; width: 40px; height: 40px;">🏛️</div>
+            <div>
+                <div class="kpi-value" style="font-size: 1.45rem;">@SpecRepo.GetAll().Count</div>
+                <div class="kpi-label" style="font-size: 0.78rem;">Monitored Services</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main 2-Column Cockpit Layout -->
+<div style="display: grid; grid-template-columns: @(_isSidebarOpen ? "270px 1fr" : "1fr"); gap: 1.25rem; align-items: start; transition: grid-template-columns 0.2s ease;">
+
+    <!-- Left Column: Collapsible Multi-Facet Filter Sidebar -->
+    @if (_isSidebarOpen)
+    {
+        <div class="saas-card" style="padding: 1.1rem; border: 1px solid var(--border-color); background: var(--bg-card); position: sticky; top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.9rem;">
+                <h3 style="font-size: 0.92rem; font-weight: 700; color: var(--text-main); margin: 0; text-transform: uppercase; letter-spacing: 0.04em;">
+                    ⚡ Faceted Filters
+                </h3>
+                @if (HasActiveFilters)
+                {
+                    <button style="background: none; border: none; font-size: 0.76rem; color: var(--primary-purple); cursor: pointer; text-decoration: underline; padding: 0;"
+                            @onclick="ResetFilters">
+                        Reset All
+                    </button>
+                }
+            </div>
+
+            <!-- Search Input -->
+            <div style="margin-bottom: 1.1rem;">
+                <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">Search</label>
+                <div class="topbar-search-wrap" style="width: 100%;">
+                    <span class="topbar-search-icon" style="font-size: 0.82rem;">🔍</span>
+                    <input type="text" class="topbar-search-input" placeholder="Package, PURL, CVE..." style="font-size: 0.82rem; padding: 0.4rem 0.5rem 0.4rem 2rem;"
+                           @bind="_searchTerm" @bind:event="oninput" />
+                </div>
+            </div>
+
+            <!-- Facet 1: Ecosystem -->
+            <div style="margin-bottom: 1.1rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem;">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-main); display: block; margin-bottom: 0.45rem;">
+                    Ecosystem
+                </label>
+                <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                    @foreach (var eco in GetAllEcosystemCounts())
+                    {
+                        var isChecked = _selectedEcosystems.Contains(eco.Key);
+                        <label style="font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-secondary); user-select: none;">
+                            <span style="display: flex; align-items: center; gap: 0.4rem;">
+                                <input type="checkbox" checked="@isChecked" @onchange="() => ToggleEcosystemFilter(eco.Key)" />
+                                <span>@eco.Key</span>
+                            </span>
+                            <span style="font-size: 0.72rem; background: var(--bg-soft); padding: 0.1rem 0.4rem; border-radius: 999px; color: var(--text-muted);">
+                                @eco.Value
+                            </span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <!-- Facet 2: Security Status -->
+            <div style="margin-bottom: 1.1rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem;">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-main); display: block; margin-bottom: 0.45rem;">
+                    Security Status
+                </label>
+                <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                    <label style="font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-secondary); user-select: none;">
+                        <span style="display: flex; align-items: center; gap: 0.4rem;">
+                            <input type="checkbox" checked="@(_selectedSecurityFilter == "vulnerable")" @onchange='() => ToggleSecurityFilter("vulnerable")' />
+                            <span>🔴 Vulnerable</span>
+                        </span>
+                        <span style="font-size: 0.72rem; background: #FEE2E2; color: #DC2626; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 600;">
+                            @VulnerableComponentsCount
+                        </span>
+                    </label>
+                    <label style="font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-secondary); user-select: none;">
+                        <span style="display: flex; align-items: center; gap: 0.4rem;">
+                            <input type="checkbox" checked="@(_selectedSecurityFilter == "clean")" @onchange='() => ToggleSecurityFilter("clean")' />
+                            <span>🟢 Verified Clean</span>
+                        </span>
+                        <span style="font-size: 0.72rem; background: #DCFCE7; color: #15803D; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 600;">
+                            @CleanComponentsCount
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Facet 3: Lifecycle Management (LCM) -->
+            <div style="margin-bottom: 1.1rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem;">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-main); display: block; margin-bottom: 0.45rem;">
+                    Lifecycle & Drift
+                </label>
+                <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                    <label style="font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-secondary); user-select: none;">
+                        <span style="display: flex; align-items: center; gap: 0.4rem;">
+                            <input type="checkbox" checked="@(_selectedLcmFilter == "deprecated")" @onchange='() => ToggleLcmFilter("deprecated")' />
+                            <span>🚨 Deprecated</span>
+                        </span>
+                        <span style="font-size: 0.72rem; background: #FEE2E2; color: #DC2626; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 600;">
+                            @TotalDeprecatedComponents
+                        </span>
+                    </label>
+                    <label style="font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-secondary); user-select: none;">
+                        <span style="display: flex; align-items: center; gap: 0.4rem;">
+                            <input type="checkbox" checked="@(_selectedLcmFilter == "outdated")" @onchange='() => ToggleLcmFilter("outdated")' />
+                            <span>⚠️ Update Available</span>
+                        </span>
+                        <span style="font-size: 0.72rem; background: #FEF3C7; color: #B45309; padding: 0.1rem 0.4rem; border-radius: 999px; font-weight: 600;">
+                            @TotalOutdatedComponents
+                        </span>
+                    </label>
+                    <label style="font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-secondary); user-select: none;">
+                        <span style="display: flex; align-items: center; gap: 0.4rem;">
+                            <input type="checkbox" checked="@(_selectedLcmFilter == "uptodate")" @onchange='() => ToggleLcmFilter("uptodate")' />
+                            <span>✓ Up to Date</span>
+                        </span>
+                        <span style="font-size: 0.72rem; background: #DCFCE7; color: #15803D; padding: 0.1rem 0.4rem; border-radius: 999px;">
+                            @(TotalUniqueComponents - TotalOutdatedComponents)
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Facet 4: License -->
+            <div style="margin-bottom: 1.1rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem;">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-main); display: block; margin-bottom: 0.45rem;">
+                    SPDX License
+                </label>
+                <div style="display: flex; flex-direction: column; gap: 0.35rem; max-height: 140px; overflow-y: auto;">
+                    @foreach (var lic in GetAllLicenseCounts())
+                    {
+                        var isChecked = _selectedLicenses.Contains(lic.Key);
+                        <label style="font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-secondary); user-select: none;">
+                            <span style="display: flex; align-items: center; gap: 0.4rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px;">
+                                <input type="checkbox" checked="@isChecked" @onchange="() => ToggleLicenseFilter(lic.Key)" />
+                                <span title="@lic.Key">@lic.Key</span>
+                            </span>
+                            <span style="font-size: 0.72rem; background: var(--bg-soft); padding: 0.1rem 0.4rem; border-radius: 999px; color: var(--text-muted);">
+                                @lic.Value
+                            </span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <!-- Facet 5: Services -->
+            <div style="border-top: 1px solid var(--border-color); padding-top: 0.75rem;">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-main); display: block; margin-bottom: 0.45rem;">
+                    Monitored Services
+                </label>
+                <div style="display: flex; flex-direction: column; gap: 0.35rem; max-height: 140px; overflow-y: auto;">
+                    @foreach (var s in GetAllServicesWithCounts())
+                    {
+                        var isChecked = _selectedServices.Contains(s.Key);
+                        <label style="font-size: 0.78rem; display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-secondary); user-select: none;">
+                            <span style="display: flex; align-items: center; gap: 0.4rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px;">
+                                <input type="checkbox" checked="@isChecked" @onchange="() => ToggleServiceFilter(s.Key)" />
+                                <span title="@s.Key">@s.Key</span>
+                            </span>
+                            <span style="font-size: 0.72rem; background: var(--bg-soft); padding: 0.1rem 0.35rem; border-radius: 999px;">
+                                @s.Value
+                            </span>
+                        </label>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Right Column: 4-Tab Unified Hub -->
+    <div class="saas-card" style="padding: 0; overflow: hidden; border: 1px solid var(--border-color); background: var(--bg-card);">
+        
+        <!-- Tab Navigation Bar -->
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); background: var(--bg-subtle); padding: 0.5rem 1rem 0 1rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="display: flex; gap: 0.25rem; align-items: flex-end;">
+                <button class="tab-btn @(_activeTab == "vulns" ? "active" : "")" @onclick='() => SetTab("vulns")'>
+                    <span>🚨 Active Vulnerabilities</span>
+                    <span class="tab-badge" style="background: @(FilteredVulnerabilities.Count > 0 ? "#FEE2E2" : "#E5E7EB"); color: @(FilteredVulnerabilities.Count > 0 ? "#DC2626" : "#6B7280");">
+                        @FilteredVulnerabilities.Count
+                    </span>
+                </button>
+                <button class="tab-btn @(_activeTab == "sbom" ? "active" : "")" @onclick='() => SetTab("sbom")'>
+                    <span>📦 SBOM Inventory</span>
+                    <span class="tab-badge">@FilteredComponents.Count()</span>
+                </button>
+                <button class="tab-btn @(_activeTab == "lcm" ? "active" : "")" @onclick='() => SetTab("lcm")'>
+                    <span>🔄 Lifecycle Drift (LCM)</span>
+                    <span class="tab-badge">@FilteredComponents.Count(c => c.Component.Properties.Any(p => p.Name == "atlas:lifecycle:isOutdated" && p.Value == "true"))</span>
+                </button>
+                <button class="tab-btn @(_activeTab == "licenses" ? "active" : "")" @onclick='() => SetTab("licenses")'>
+                    <span>⚖️ Licenses & Compliance</span>
+                </button>
+            </div>
+
+            <div style="font-size: 0.8rem; color: var(--text-muted); padding-bottom: 0.5rem;">
+                Showing <strong>@FilteredComponents.Count()</strong> of @TotalUniqueComponents components
+            </div>
+        </div>
+
+        <!-- Tab 1: 🚨 Active Vulnerabilities & Remediation Queue -->
+        @if (_activeTab == "vulns")
+        {
+            @if (FilteredVulnerabilities.Count == 0)
+            {
+                <div style="padding: 3rem; text-align: center; color: var(--text-muted);">
+                    <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🛡️</div>
+                    <div style="font-size: 1.05rem; font-weight: 600; color: #15803D;">Zero Active Vulnerabilities Found</div>
+                    <div style="font-size: 0.85rem; margin-top: 0.25rem;">All filtered packages match clean reports against OSV.dev and GitHub Advisory Database.</div>
+                </div>
+            }
+            else
+            {
+                <div style="overflow-x: auto;">
+                    <table class="saas-table compact-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 100px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("severity")'>
+                                    Severity @GetSortIcon("severity")
+                                </th>
+                                <th style="width: 170px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("cve")'>
+                                    CVE / Vuln ID @GetSortIcon("cve")
+                                </th>
+                                <th style="cursor: pointer; user-select: none;" @onclick='() => ToggleSort("component")'>
+                                    Affected Component @GetSortIcon("component")
+                                </th>
+                                <th style="width: 75px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("cvss")'>
+                                    CVSS @GetSortIcon("cvss")
+                                </th>
+                                <th style="width: 130px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("disclosed")'>
+                                    Disclosed @GetSortIcon("disclosed")
+                                </th>
+                                <th style="cursor: pointer; user-select: none;" @onclick='() => ToggleSort("services")'>
+                                    Affected Services @GetSortIcon("services")
+                                </th>
+                                <th style="cursor: pointer; user-select: none;" @onclick='() => ToggleSort("fix")'>
+                                    Recommended Fix @GetSortIcon("fix")
+                                </th>
+                                <th style="width: 60px; text-align: center;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in SortedVulnerabilities)
+                            {
+                                var v = item.Vuln;
+                                var c = item.Component;
+                                var sev = v.Ratings.FirstOrDefault()?.Severity ?? "High";
+                                var score = v.Ratings.FirstOrDefault()?.Score ?? 5.0;
+                                var eco = ExtractEcosystem(c.Purl);
+                                var cveDisplay = !string.IsNullOrWhiteSpace(v.CveId) ? v.CveId : v.Id;
+                                var hasGhsaAlias = !string.IsNullOrWhiteSpace(v.CveId) && !v.Id.Equals(v.CveId, StringComparison.OrdinalIgnoreCase);
+
+                                <tr style="cursor: pointer;" @onclick="() => SelectVulnerability(v, c, item.Services)">
+                                    <td>
+                                        <span class="@GetSeverityBadgeClass(sev)" style="font-size: 0.74rem; font-weight: 700; padding: 0.15rem 0.45rem;">
+                                            @sev.ToUpperInvariant()
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div>
+                                            <strong style="color: var(--primary-purple); font-size: 0.84rem;">@cveDisplay</strong>
+                                            @if (hasGhsaAlias)
+                                            {
+                                                <div style="font-size: 0.7rem; color: var(--text-muted);">@v.Id</div>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div style="display: flex; align-items: center; gap: 0.35rem;">
+                                            <span class="eco-pill @eco.ToLowerInvariant()">@eco</span>
+                                            <strong style="font-size: 0.82rem; color: var(--text-main);">@c.Name</strong>
+                                            <code style="font-size: 0.75rem; color: var(--text-muted);">@@@c.Version</code>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span style="font-size: 0.8rem; font-weight: 700; color: @(score >= 7.0 ? "#DC2626" : "#D97706");">
+                                            @score.ToString("0.0")
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span style="font-size: 0.78rem; color: var(--text-muted);" title="@(v.Published.HasValue ? v.Published.Value.ToString("yyyy-MM-dd HH:mm") : "")">
+                                            @FormatRelativeAge(v.Published)
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                                            @foreach (var s in item.Services)
+                                            {
+                                                <a href="/catalog/@s" style="font-size: 0.72rem; text-decoration: none; background: #F3E8FF; color: var(--primary-purple); padding: 0.1rem 0.35rem; border-radius: 4px;"
+                                                   @onclick:stopPropagation="true">
+                                                    @s
+                                                </a>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrWhiteSpace(v.FixedVersion))
+                                        {
+                                            <span style="font-size: 0.78rem; color: #15803D; font-weight: 600;">
+                                                Fixed in ≥ @v.FixedVersion
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span style="font-size: 0.76rem; color: var(--text-muted);">Upgrade to latest release</span>
+                                        }
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <button class="icon-btn" title="Inspect details" @onclick="() => SelectVulnerability(v, c, item.Services)" @onclick:stopPropagation="true">
+                                            🔍
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+
+        <!-- Tab 2: 📦 High-Density SBOM Inventory -->
+        @if (_activeTab == "sbom")
+        {
+            <div style="overflow-x: auto;">
+                <table class="saas-table compact-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 75px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("eco")'>
+                                Ecosystem @GetSortIcon("eco")
+                            </th>
+                            <th style="cursor: pointer; user-select: none;" @onclick='() => ToggleSort("name")'>
+                                Component Name & Description @GetSortIcon("name")
+                            </th>
+                            <th style="width: 90px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("version")'>
+                                Version @GetSortIcon("version")
+                            </th>
+                            <th style="width: 110px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("license")'>
+                                License @GetSortIcon("license")
+                            </th>
+                            <th style="width: 140px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("security")'>
+                                Security Status @GetSortIcon("security")
+                            </th>
+                            <th style="width: 140px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("lcm")'>
+                                Supply Chain (LCM) @GetSortIcon("lcm")
+                            </th>
+                            <th style="cursor: pointer; user-select: none;" @onclick='() => ToggleSort("services")'>
+                                Services @GetSortIcon("services")
+                            </th>
+                            <th style="width: 50px; text-align: center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var comp in SortedComponents)
+                        {
+                            var c = comp.Component;
+                            var vulns = comp.Vulnerabilities;
+                            var eco = ExtractEcosystem(c.Purl);
+                            var licName = c.Licenses.FirstOrDefault()?.License?.Name ?? c.Licenses.FirstOrDefault()?.License?.Id ?? "MIT";
+                            var isOutdated = c.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:isOutdated")?.Value == "true";
+                            var latestVer = c.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:latestVersion")?.Value;
+                            var isDep = c.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:isDeprecated")?.Value == "true";
+
+                            <tr style="cursor: pointer;" @onclick="() => SelectComponent(comp)">
+                                <td>
+                                    <span class="eco-pill @eco.ToLowerInvariant()">@eco</span>
+                                </td>
+                                <td>
+                                    <div style="display: flex; flex-direction: column;">
+                                        <strong style="color: var(--text-main); font-size: 0.82rem;">@c.Name</strong>
+                                        @if (!string.IsNullOrWhiteSpace(c.Description))
+                                        {
+                                            <span style="font-size: 0.72rem; color: var(--text-muted); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                                @c.Description
+                                            </span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <code style="font-size: 0.78rem;">@c.Version</code>
+                                </td>
+                                <td>
+                                    <span class="badge-clean-purple" style="font-size: 0.74rem;">📄 @licName</span>
+                                </td>
+                                <td>
+                                    @if (vulns.Count > 0)
+                                    {
+                                        <span class="badge-clean-red" style="font-size: 0.74rem; font-weight: 700;">
+                                            🔴 @vulns.Count CVE@(vulns.Count > 1 ? "s" : "")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge-clean-green" style="font-size: 0.74rem;">
+                                            🟢 Clean
+                                        </span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (isDep)
+                                    {
+                                        <span class="badge-clean-red" style="font-size: 0.74rem;">🚨 Deprecated</span>
+                                    }
+                                    else if (isOutdated && !string.IsNullOrWhiteSpace(latestVer))
+                                    {
+                                        <span class="badge-clean-gold" style="font-size: 0.74rem;">Update: @latestVer</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="font-size: 0.75rem; color: #15803D;">✓ Up to date</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div style="display: flex; gap: 0.2rem; flex-wrap: wrap;">
+                                        @foreach (var s in comp.Services)
+                                        {
+                                            <a href="/catalog/@s" style="font-size: 0.72rem; text-decoration: none; background: var(--bg-soft); color: var(--text-main); padding: 0.08rem 0.3rem; border-radius: 4px;"
+                                               @onclick:stopPropagation="true">
+                                                @s
+                                            </a>
+                                        }
+                                    </div>
+                                </td>
+                                <td style="text-align: center;">
+                                    <button class="icon-btn" title="Inspect component" @onclick="() => SelectComponent(comp)" @onclick:stopPropagation="true">
+                                        🔍
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <!-- Tab 3: 🔄 Lifecycle Management (LCM) & Version Drift -->
+        @if (_activeTab == "lcm")
+        {
+            <div style="overflow-x: auto;">
+                <table class="saas-table compact-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 75px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("eco")'>
+                                Ecosystem @GetSortIcon("eco")
+                            </th>
+                            <th style="cursor: pointer; user-select: none;" @onclick='() => ToggleSort("name")'>
+                                Component Name @GetSortIcon("name")
+                            </th>
+                            <th style="width: 100px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("version")'>
+                                Current Version @GetSortIcon("version")
+                            </th>
+                            <th style="width: 100px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("latest")'>
+                                Latest Version @GetSortIcon("latest")
+                            </th>
+                            <th style="width: 130px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("drift")'>
+                                Drift Status @GetSortIcon("drift")
+                            </th>
+                            <th style="width: 120px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("published")'>
+                                Published Date @GetSortIcon("published")
+                            </th>
+                            <th style="cursor: pointer; user-select: none;" @onclick='() => ToggleSort("services")'>
+                                Services Affected @GetSortIcon("services")
+                            </th>
+                            <th style="width: 50px; text-align: center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var comp in SortedLcmComponents)
+                        {
+                            var c = comp.Component;
+                            var eco = ExtractEcosystem(c.Purl);
+                            var isOutdated = c.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:isOutdated")?.Value == "true";
+                            var latestVer = c.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:latestVersion")?.Value ?? c.Version;
+                            var pubDateStr = c.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:publishedAt")?.Value;
+                            var isDep = c.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:isDeprecated")?.Value == "true";
+
+                            DateTime? pubDate = null;
+                            if (DateTime.TryParse(pubDateStr, out var pd)) pubDate = pd;
+
+                            var drift = ClassifyVersionDrift(c.Version, latestVer, isDep);
+
+                            <tr style="cursor: pointer;" @onclick="() => SelectComponent(comp)">
+                                <td>
+                                    <span class="eco-pill @eco.ToLowerInvariant()">@eco</span>
+                                </td>
+                                <td>
+                                    <strong style="color: var(--text-main); font-size: 0.82rem;">@c.Name</strong>
+                                </td>
+                                <td>
+                                    <code style="font-size: 0.78rem;">@c.Version</code>
+                                </td>
+                                <td>
+                                    <code style="font-size: 0.78rem; color: @(isOutdated ? "#D97706" : "#15803D");">@latestVer</code>
+                                </td>
+                                <td>
+                                    <span class="@drift.BadgeClass" style="font-size: 0.74rem;">
+                                        @drift.Label
+                                    </span>
+                                </td>
+                                <td>
+                                    <span style="font-size: 0.78rem; color: var(--text-muted);">
+                                        @(pubDate.HasValue ? pubDate.Value.ToString("yyyy-MM-dd") : "-")
+                                    </span>
+                                </td>
+                                <td>
+                                    <div style="display: flex; gap: 0.2rem; flex-wrap: wrap;">
+                                        @foreach (var s in comp.Services)
+                                        {
+                                            <span style="font-size: 0.72rem; background: var(--bg-soft); padding: 0.08rem 0.3rem; border-radius: 4px;">
+                                                @s
+                                            </span>
+                                        }
+                                    </div>
+                                </td>
+                                <td style="text-align: center;">
+                                    <button class="icon-btn" title="Inspect" @onclick="() => SelectComponent(comp)" @onclick:stopPropagation="true">
+                                        🔍
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <!-- Tab 4: ⚖️ Licenses & Compliance -->
+        @if (_activeTab == "licenses")
+        {
+            <div style="overflow-x: auto;">
+                <table class="saas-table compact-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 75px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("eco")'>
+                                Ecosystem @GetSortIcon("eco")
+                            </th>
+                            <th style="cursor: pointer; user-select: none;" @onclick='() => ToggleSort("name")'>
+                                Component Name @GetSortIcon("name")
+                            </th>
+                            <th style="width: 90px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("version")'>
+                                Version @GetSortIcon("version")
+                            </th>
+                            <th style="cursor: pointer; user-select: none;" @onclick='() => ToggleSort("license")'>
+                                SPDX License Identifier @GetSortIcon("license")
+                            </th>
+                            <th style="width: 140px; cursor: pointer; user-select: none;" @onclick='() => ToggleSort("compliance")'>
+                                Compliance Category @GetSortIcon("compliance")
+                            </th>
+                            <th style="width: 150px;">Verified Source</th>
+                            <th style="cursor: pointer; user-select: none;" @onclick='() => ToggleSort("services")'>
+                                Services @GetSortIcon("services")
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var comp in SortedLicenseComponents)
+                        {
+                            var c = comp.Component;
+                            var eco = ExtractEcosystem(c.Purl);
+                            var licName = c.Licenses.FirstOrDefault()?.License?.Name ?? c.Licenses.FirstOrDefault()?.License?.Id ?? "MIT";
+                            var verifiedBy = c.Properties.FirstOrDefault(p => p.Name == "atlas:license:verifiedBy")?.Value ?? "Manifest / Google deps.dev";
+                            var isPermissive = licName.Contains("MIT", StringComparison.OrdinalIgnoreCase) ||
+                                               licName.Contains("Apache", StringComparison.OrdinalIgnoreCase) ||
+                                               licName.Contains("BSD", StringComparison.OrdinalIgnoreCase) ||
+                                               licName.Contains("ISC", StringComparison.OrdinalIgnoreCase);
+
+                            <tr>
+                                <td>
+                                    <span class="eco-pill @eco.ToLowerInvariant()">@eco</span>
+                                </td>
+                                <td>
+                                    <strong style="color: var(--text-main); font-size: 0.82rem;">@c.Name</strong>
+                                </td>
+                                <td>
+                                    <code style="font-size: 0.78rem;">@c.Version</code>
+                                </td>
+                                <td>
+                                    <span class="badge-clean-purple" style="font-size: 0.78rem; font-weight: 600;">
+                                        📄 @licName
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (isPermissive)
+                                    {
+                                        <span class="badge-clean-green" style="font-size: 0.74rem;">✓ Permissive</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge-clean-gold" style="font-size: 0.74rem;">⚖️ Copyleft / Review</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span style="font-size: 0.76rem; color: var(--text-muted);">
+                                        🌐 @verifiedBy
+                                    </span>
+                                </td>
+                                <td>
+                                    <div style="display: flex; gap: 0.2rem; flex-wrap: wrap;">
+                                        @foreach (var s in comp.Services)
+                                        {
+                                            <span style="font-size: 0.72rem; background: var(--bg-soft); padding: 0.08rem 0.3rem; border-radius: 4px;">
+                                                @s
+                                            </span>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Sliding Side-Drawer Inspector -->
+@if (_selectedVuln != null || _selectedComponent != null)
+{
+    <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; display: flex; justify-content: flex-end;"
+         @onclick="CloseInspector">
+        <div style="width: 520px; max-width: 90vw; height: 100vh; background: var(--bg-card); box-shadow: -4px 0 24px rgba(0,0,0,0.4); overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem;"
+             @onclick:stopPropagation="true">
+            
+            <!-- Drawer Header -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem;">
+                <div>
+                    @if (_selectedVuln != null)
+                    {
+                        var cveDisplay = !string.IsNullOrWhiteSpace(_selectedVuln.CveId) ? _selectedVuln.CveId : _selectedVuln.Id;
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem;">
+                            <span class="@GetSeverityBadgeClass(_selectedVuln.Ratings.FirstOrDefault()?.Severity ?? "High")" style="font-size: 0.74rem; font-weight: 700;">
+                                @((_selectedVuln.Ratings.FirstOrDefault()?.Severity ?? "HIGH").ToUpperInvariant())
+                            </span>
+                            <span style="font-size: 0.78rem; color: var(--text-muted);">
+                                CVSS Score: <strong>@((_selectedVuln.Ratings.FirstOrDefault()?.Score ?? 5.0).ToString("0.0"))</strong>
+                            </span>
+                        </div>
+                        <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--text-main); margin: 0;">
+                            @cveDisplay
+                        </h2>
+                        @if (!string.IsNullOrWhiteSpace(_selectedVuln.CveId) && !_selectedVuln.Id.Equals(_selectedVuln.CveId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;">
+                                GitHub Advisory: <strong>@_selectedVuln.Id</strong>
+                            </div>
+                        }
+                    }
+                    else if (_selectedComponent != null)
+                    {
+                        var eco = ExtractEcosystem(_selectedComponent.Component.Purl);
+                        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+                            <span class="eco-pill @eco.ToLowerInvariant()">@eco</span>
+                            <span style="font-size: 0.78rem; color: var(--text-muted);">Component Inspector</span>
+                        </div>
+                        <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--text-main); margin: 0;">
+                            @_selectedComponent.Component.Name
+                        </h2>
+                    }
+                </div>
+
+                <button style="background: none; border: none; font-size: 1.25rem; color: var(--text-muted); cursor: pointer; padding: 0.2rem;"
+                        @onclick="CloseInspector">
+                    ✕
+                </button>
+            </div>
+
+            <!-- Drawer Body for Vulnerability -->
+            @if (_selectedVuln != null)
+            {
+                var v = _selectedVuln;
+                var c = _selectedVulnComponent;
+
+                <!-- External Database Quick Links with Official Logos -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 0.5rem;">
+                    <a href="@v.Source.Url" target="_blank" class="external-db-card">
+                        <img src="/osv.png" width="18" height="18" alt="OSV.dev" style="border-radius: 3px; object-fit: contain;" />
+                        <span>OSV.dev</span>
+                        <span style="color: var(--text-muted); font-size: 0.72rem; margin-left: auto;">↗</span>
+                    </a>
+                    @if (!string.IsNullOrWhiteSpace(v.CveId))
+                    {
+                        <a href="https://nvd.nist.gov/vuln/detail/@v.CveId" target="_blank" class="external-db-card">
+                            <img src="/nvd.png" width="18" height="18" alt="NVD" style="border-radius: 3px; object-fit: contain;" />
+                            <span>NVD Database</span>
+                            <span style="color: var(--text-muted); font-size: 0.72rem; margin-left: auto;">↗</span>
+                        </a>
+                    }
+                    @if (v.Id.StartsWith("GHSA-", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <a href="https://github.com/advisories/@v.Id" target="_blank" class="external-db-card">
+                            <img src="/github.png" width="18" height="18" alt="GitHub" style="border-radius: 3px; object-fit: contain;" />
+                            <span>GitHub Advisory</span>
+                            <span style="color: var(--text-muted); font-size: 0.72rem; margin-left: auto;">↗</span>
+                        </a>
+                    }
+                </div>
+
+                <!-- Public Disclosure Details -->
+                <div style="background: #F8FAFC; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.9rem;">
+                    <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem;">
+                        📅 Disclosure & Telemetry
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.82rem;">
+                        <div>
+                            <span style="color: var(--text-muted);">Public Since:</span>
+                            <div><strong>@FormatRelativeAge(v.Published)</strong></div>
+                            @if (v.Published.HasValue)
+                            {
+                                <div style="font-size: 0.74rem; color: var(--text-muted);">@v.Published.Value.ToString("yyyy-MM-dd")</div>
+                            }
+                        </div>
+                        <div>
+                            <span style="color: var(--text-muted);">Source Database:</span>
+                            <div><strong>@v.Source.Name</strong></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Remediation Action Plan -->
+                <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 0.9rem;">
+                    <div style="font-size: 0.78rem; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 0.4rem;">
+                        🛠️ Remediation Target
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(v.FixedVersion))
+                    {
+                        <div style="font-size: 0.88rem; color: #14532D; font-weight: 600;">
+                            Upgrade to <strong>≥ @v.FixedVersion</strong>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="font-size: 0.88rem; color: #14532D;">
+                            Upgrade to the latest available non-vulnerable release.
+                        </div>
+                    }
+                    @if (c != null)
+                    {
+                        var eco = ExtractEcosystem(c.Purl);
+                        <div style="margin-top: 0.5rem;">
+                            <code style="display: block; font-size: 0.76rem; background: #DCFCE7; padding: 0.35rem 0.5rem; border-radius: 4px; color: #166534;">
+                                @(eco == "npm" ? $"npm install {c.Name}@{v.FixedVersion ?? "latest"}" : $"dotnet add package {c.Name} --version {v.FixedVersion ?? "latest"}")
+                            </code>
+                        </div>
+                    }
+                </div>
+
+                <!-- Description & Details -->
+                <div>
+                    <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem;">
+                        📝 Summary & Impact
+                    </div>
+                    <div class="markdown-body" style="font-size: 0.85rem; color: var(--text-main); line-height: 1.6;">
+                        @((MarkupString)RenderMarkdown(!string.IsNullOrWhiteSpace(v.Detail) ? v.Detail : v.Description))
+                    </div>
+                </div>
+
+                <!-- Affected Services -->
+                @if (_selectedVulnServices != null && _selectedVulnServices.Count > 0)
+                {
+                    <div>
+                        <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem;">
+                            🏛️ Affected Fleet Services (@_selectedVulnServices.Count)
+                        </div>
+                        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                            @foreach (var s in _selectedVulnServices)
+                            {
+                                <a href="/catalog/@s" style="font-size: 0.8rem; background: #F3E8FF; color: var(--primary-purple); padding: 0.2rem 0.5rem; border-radius: 4px; text-decoration: none;">
+                                    @s
+                                </a>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+
+            <!-- Drawer Body for Component -->
+            @if (_selectedComponent != null)
+            {
+                var c = _selectedComponent.Component;
+                var vulns = _selectedComponent.Vulnerabilities;
+                var eco = ExtractEcosystem(c.Purl);
+                var licName = c.Licenses.FirstOrDefault()?.License?.Name ?? c.Licenses.FirstOrDefault()?.License?.Id ?? "MIT";
+                var latestVer = c.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:latestVersion")?.Value ?? c.Version;
+                var isOutdated = c.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:isOutdated")?.Value == "true";
+                var pubDateStr = c.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:publishedAt")?.Value;
+                var osvUrl = c.Properties.FirstOrDefault(p => p.Name == "atlas:osv:url")?.Value ?? $"https://osv.dev/list?q={Uri.EscapeDataString(c.Name)}";
+
+                <!-- External Database Quick Links with Official Logos -->
+                <div style="display: grid; grid-template-columns: 1fr; gap: 0.5rem;">
+                    <a href="@osvUrl" target="_blank" class="external-db-card">
+                        <img src="/osv.png" width="18" height="18" alt="OSV.dev" style="border-radius: 3px; object-fit: contain;" />
+                        <span>Search on OSV.dev</span>
+                        <span style="color: var(--text-muted); font-size: 0.72rem; margin-left: auto;">↗</span>
+                    </a>
+                </div>
+
+                <!-- Package Info Card -->
+                <div style="background: #F8FAFC; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.9rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; font-size: 0.82rem;">
+                        <div>
+                            <span style="color: var(--text-muted);">Current Version:</span>
+                            <div><code>@c.Version</code></div>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-muted);">Latest Version:</span>
+                            <div><code style="color: @(isOutdated ? "#D97706" : "#15803D");">@latestVer</code></div>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-muted);">SPDX License:</span>
+                            <div><strong>@licName</strong></div>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-muted);">Ecosystem:</span>
+                            <div><strong>@eco</strong></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PURL Code Box -->
+                <div>
+                    <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.35rem;">
+                        Canonical Package URL (PURL)
+                    </div>
+                    <code style="display: block; font-size: 0.75rem; background: var(--bg-soft); padding: 0.5rem; border-radius: 4px; word-break: break-all;">
+                        @c.Purl
+                    </code>
+                </div>
+
+                <!-- Vulnerabilities on this component -->
+                <div>
+                    <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem;">
+                        🛡️ Active Vulnerabilities (@vulns.Count)
+                    </div>
+                    @if (vulns.Count == 0)
+                    {
+                        <div class="badge-clean-green" style="display: inline-block; font-size: 0.8rem;">
+                            🟢 Clean — 0 CVEs reported in OSV.dev
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                            @foreach (var v in vulns)
+                            {
+                                var sev = v.Ratings.FirstOrDefault()?.Severity ?? "High";
+                                var cveDisplay = !string.IsNullOrWhiteSpace(v.CveId) ? v.CveId : v.Id;
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.6rem; border-radius: 6px; background: #FEF2F2; border: 1px solid #FECACA; cursor: pointer;"
+                                     @onclick="() => SelectVulnerability(v, c, _selectedComponent.Services)">
+                                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                        <span class="@GetSeverityBadgeClass(sev)" style="font-size: 0.7rem; padding: 0.1rem 0.35rem;">@sev</span>
+                                        <strong style="font-size: 0.8rem; color: #DC2626;">@cveDisplay</strong>
+                                    </div>
+                                    <span style="font-size: 0.74rem; color: var(--text-muted);">
+                                        @FormatRelativeAge(v.Published)
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <!-- Upstream Links from deps.dev -->
+                @if (c.ExternalReferences != null && c.ExternalReferences.Count > 0)
+                {
+                    <div>
+                        <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem;">
+                            🔗 Verified Registry & VCS Links
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.3rem;">
+                            @foreach (var r in c.ExternalReferences)
+                            {
+                                <a href="@r.Url" target="_blank" style="font-size: 0.78rem; color: var(--primary-purple); text-decoration: none; word-break: break-all;">
+                                    @(r.Type.ToUpperInvariant()): @r.Url ↗
+                                </a>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+<style>
+    /* High-density compact table styling */
+    .compact-table th {
+        padding: 0.45rem 0.75rem !important;
+        font-size: 0.76rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        background: var(--bg-subtle) !important;
+        color: var(--text-muted) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+    }
+    .compact-table td {
+        padding: 0.45rem 0.75rem !important;
+        font-size: 0.8rem !important;
+        vertical-align: middle;
+        color: var(--text-main);
+        border-bottom: 1px solid var(--border-color);
+    }
+    .compact-table tbody tr:hover {
+        background: var(--bg-subtle) !important;
+    }
+
+    /* Tab Buttons */
+    .tab-btn {
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        padding: 0.5rem 0.85rem;
+        font-size: 0.84rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        transition: all 0.15s ease;
+    }
+    .tab-btn:hover {
+        color: var(--text-main);
+    }
+    .tab-btn.active {
+        color: var(--primary-purple);
+        border-bottom-color: var(--primary-purple);
+        background: var(--bg-card);
+        border-top-left-radius: 6px;
+        border-top-right-radius: 6px;
+    }
+    .tab-badge {
+        font-size: 0.7rem;
+        background: var(--bg-soft);
+        color: var(--text-muted);
+        padding: 0.1rem 0.4rem;
+        border-radius: 999px;
+    }
+
+    /* Ecosystem Pills */
+    .eco-pill {
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+        letter-spacing: 0.02em;
+    }
+    .eco-pill.nuget { background: #E0F2FE; color: #0369A1; }
+    .eco-pill.npm { background: #FEE2E2; color: #DC2626; }
+    .eco-pill.pypi { background: #FEF3C7; color: #B45309; }
+    .eco-pill.maven { background: #EDE9FE; color: #6D28D9; }
+    .eco-pill.go { background: #E0E7FF; color: #4338CA; }
+
+    /* Action Buttons */
+    .icon-btn {
+        background: var(--bg-subtle);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+        border-radius: 4px;
+        padding: 0.2rem 0.35rem;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: background 0.15s ease;
+    }
+    .icon-btn:hover {
+        background: var(--primary-purple-light);
+        color: var(--primary-purple);
+    }
+
+    /* External DB Cards with Logos */
+    .external-db-card {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.55rem 0.8rem;
+        background: var(--bg-subtle);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        text-decoration: none;
+        color: var(--text-main);
+        font-size: 0.8rem;
+        font-weight: 600;
+        transition: all 0.15s ease;
+    }
+    .external-db-card:hover {
+        background: var(--primary-purple-light) !important;
+        border-color: var(--primary-purple) !important;
+        color: var(--primary-purple) !important;
+        box-shadow: 0 2px 8px rgba(109, 40, 217, 0.08);
+    }
+
+    /* Markdown Body in Drawer */
+    .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+        font-size: 0.92rem;
+        font-weight: 700;
+        margin-top: 0.85rem;
+        margin-bottom: 0.35rem;
+        color: var(--text-main);
+    }
+    .markdown-body p {
+        margin-bottom: 0.55rem;
+        line-height: 1.55;
+    }
+    .markdown-body ul, .markdown-body ol {
+        padding-left: 1.25rem;
+        margin-bottom: 0.55rem;
+    }
+    .markdown-body li {
+        margin-bottom: 0.2rem;
+    }
+    .markdown-body code {
+        background: var(--bg-soft);
+        color: var(--primary-purple);
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+        font-size: 0.82em;
+        font-family: var(--font-mono, monospace);
+    }
+    .markdown-body pre {
+        background: #1E293B;
+        color: #F8FAFC;
+        padding: 0.75rem;
+        border-radius: 6px;
+        overflow-x: auto;
+        font-size: 0.78rem;
+        margin: 0.55rem 0;
+    }
+    .markdown-body pre code {
+        background: none;
+        padding: 0;
+        color: inherit;
+    }
+</style>
+
+@code {
+    private string _activeTab = "vulns";
+    private string _searchTerm = string.Empty;
+    private bool _isSidebarOpen = true;
+    private bool _isSyncing;
+    private string? _syncMessage;
+
+    // Sorting State
+    private string _sortColumn = "severity";
+    private bool _sortAscending = false;
+
+    // Filter Facets State
+    private readonly HashSet<string> _selectedEcosystems = new(StringComparer.OrdinalIgnoreCase);
+    private string? _selectedSecurityFilter; // null, "vulnerable", "clean"
+    private string? _selectedLcmFilter;      // null, "outdated", "uptodate"
+    private readonly HashSet<string> _selectedLicenses = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _selectedServices = new(StringComparer.OrdinalIgnoreCase);
+
+    // Inspector State
+    private CycloneDxVulnerability? _selectedVuln;
+    private CycloneDxComponent? _selectedVulnComponent;
+    private List<string>? _selectedVulnServices;
+    private FleetComponentAggregate? _selectedComponent;
+
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(_searchTerm) ||
+        _selectedEcosystems.Count > 0 ||
+        !string.IsNullOrEmpty(_selectedSecurityFilter) ||
+        !string.IsNullOrEmpty(_selectedLcmFilter) ||
+        _selectedLicenses.Count > 0 ||
+        _selectedServices.Count > 0;
+
+    private void SetTab(string tab)
+    {
+        _activeTab = tab;
+        _sortColumn = tab switch
+        {
+            "vulns" => "severity",
+            "sbom" => "name",
+            "lcm" => "drift",
+            "licenses" => "license",
+            _ => "name"
+        };
+        _sortAscending = tab != "vulns";
+    }
+
+    private void ToggleSort(string column)
+    {
+        if (string.Equals(_sortColumn, column, StringComparison.OrdinalIgnoreCase))
+        {
+            _sortAscending = !_sortAscending;
+        }
+        else
+        {
+            _sortColumn = column;
+            _sortAscending = true;
+        }
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (!string.Equals(_sortColumn, column, StringComparison.OrdinalIgnoreCase)) return " ⇅";
+        return _sortAscending ? " ▲" : " ▼";
+    }
+
+    private void ResetFilters()
+    {
+        _searchTerm = string.Empty;
+        _selectedEcosystems.Clear();
+        _selectedSecurityFilter = null;
+        _selectedLcmFilter = null;
+        _selectedLicenses.Clear();
+        _selectedServices.Clear();
+    }
+
+    private void ToggleEcosystemFilter(string eco)
+    {
+        if (_selectedEcosystems.Contains(eco)) _selectedEcosystems.Remove(eco);
+        else _selectedEcosystems.Add(eco);
+    }
+
+    private void ToggleSecurityFilter(string sec)
+    {
+        if (_selectedSecurityFilter == sec) _selectedSecurityFilter = null;
+        else _selectedSecurityFilter = sec;
+    }
+
+    private void ToggleLcmFilter(string lcm)
+    {
+        if (_selectedLcmFilter == lcm) _selectedLcmFilter = null;
+        else _selectedLcmFilter = lcm;
+    }
+
+    private void ToggleLicenseFilter(string lic)
+    {
+        if (_selectedLicenses.Contains(lic)) _selectedLicenses.Remove(lic);
+        else _selectedLicenses.Add(lic);
+    }
+
+    private void ToggleServiceFilter(string s)
+    {
+        if (_selectedServices.Contains(s)) _selectedServices.Remove(s);
+        else _selectedServices.Add(s);
+    }
+
+    private void SelectVulnerability(CycloneDxVulnerability v, CycloneDxComponent? c, IEnumerable<string>? services)
+    {
+        _selectedComponent = null;
+        _selectedVuln = v;
+        _selectedVulnComponent = c;
+        _selectedVulnServices = services?.ToList();
+    }
+
+    private void SelectComponent(FleetComponentAggregate agg)
+    {
+        _selectedVuln = null;
+        _selectedComponent = agg;
+    }
+
+    private void CloseInspector()
+    {
+        _selectedVuln = null;
+        _selectedComponent = null;
+    }
+
+    private int TotalUniqueComponents => FleetIndex.TotalUniqueComponents;
+
+    private int TotalCriticalHighCves => FleetIndex.TotalCriticalHighCves;
+
+    private int TotalOutdatedComponents => FleetIndex.TotalOutdatedComponents;
+
+    private int TotalDeprecatedComponents => FleetIndex.TotalDeprecatedComponents;
+
+    private int VulnerableComponentsCount => FleetIndex.VulnerableComponentsCount;
+    private int CleanComponentsCount => FleetIndex.CleanComponentsCount;
+
+    private Dictionary<string, int> GetAllEcosystemCounts() => FleetIndex.GetEcosystemCounts();
+
+    private Dictionary<string, int> GetAllLicenseCounts() => FleetIndex.GetLicenseCounts();
+
+    private Dictionary<string, int> GetAllServicesWithCounts()
+    {
+        var summaries = SpecRepo.GetAllSummaries();
+        return summaries.ToDictionary(s => s.Name, s => s.SbomComponentCount);
+    }
+
+    private List<FleetComponentAggregate> GetAllFleetComponents()
+    {
+        return FleetIndex.GetPagedComponents(1, 1000).Items;
+    }
+
+    private IEnumerable<FleetComponentAggregate> FilteredComponents
+    {
+        get
+        {
+            var query = GetAllFleetComponents().AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(_searchTerm))
+            {
+                var term = _searchTerm.Trim();
+                query = query.Where(c => c.Component.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                                         c.Component.Purl.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                                         c.Vulnerabilities.Any(v => v.Id.Contains(term, StringComparison.OrdinalIgnoreCase) || (!string.IsNullOrWhiteSpace(v.CveId) && v.CveId.Contains(term, StringComparison.OrdinalIgnoreCase))) ||
+                                         c.Services.Any(s => s.Contains(term, StringComparison.OrdinalIgnoreCase)));
+            }
+
+            if (_selectedEcosystems.Count > 0)
+            {
+                query = query.Where(c => _selectedEcosystems.Contains(ExtractEcosystem(c.Component.Purl)));
+            }
+
+            if (_selectedSecurityFilter == "vulnerable")
+            {
+                query = query.Where(c => c.Vulnerabilities.Count > 0);
+            }
+            else if (_selectedSecurityFilter == "clean")
+            {
+                query = query.Where(c => c.Vulnerabilities.Count == 0);
+            }
+
+            if (_selectedLcmFilter == "deprecated")
+            {
+                query = query.Where(c => c.Component.Properties.Any(p => p.Name == "atlas:lifecycle:isDeprecated" && p.Value == "true"));
+            }
+            else if (_selectedLcmFilter == "outdated")
+            {
+                query = query.Where(c => c.Component.Properties.Any(p => p.Name == "atlas:lifecycle:isOutdated" && p.Value == "true"));
+            }
+            else if (_selectedLcmFilter == "uptodate")
+            {
+                query = query.Where(c => !c.Component.Properties.Any(p => p.Name == "atlas:lifecycle:isOutdated" && p.Value == "true") && !c.Component.Properties.Any(p => p.Name == "atlas:lifecycle:isDeprecated" && p.Value == "true"));
+            }
+
+            if (_selectedLicenses.Count > 0)
+            {
+                query = query.Where(c => {
+                    var lic = c.Component.Licenses.FirstOrDefault()?.License?.Name ?? c.Component.Licenses.FirstOrDefault()?.License?.Id ?? "MIT";
+                    return _selectedLicenses.Contains(lic);
+                });
+            }
+
+            if (_selectedServices.Count > 0)
+            {
+                query = query.Where(c => c.Services.Any(s => _selectedServices.Contains(s)));
+            }
+
+            return query;
+        }
+    }
+
+    private IEnumerable<FleetComponentAggregate> SortedComponents
+    {
+        get
+        {
+            var q = FilteredComponents;
+            return _sortColumn switch
+            {
+                "eco" => _sortAscending ? q.OrderBy(c => ExtractEcosystem(c.Component.Purl)) : q.OrderByDescending(c => ExtractEcosystem(c.Component.Purl)),
+                "name" => _sortAscending ? q.OrderBy(c => c.Component.Name) : q.OrderByDescending(c => c.Component.Name),
+                "version" => _sortAscending ? q.OrderBy(c => c.Component.Version) : q.OrderByDescending(c => c.Component.Version),
+                "license" => _sortAscending ? q.OrderBy(c => c.Component.Licenses.FirstOrDefault()?.License?.Name ?? "") : q.OrderByDescending(c => c.Component.Licenses.FirstOrDefault()?.License?.Name ?? ""),
+                "security" => _sortAscending ? q.OrderBy(c => c.Vulnerabilities.Count) : q.OrderByDescending(c => c.Vulnerabilities.Count),
+                "lcm" => _sortAscending ? q.OrderBy(c => c.Component.Properties.Any(p => p.Name == "atlas:lifecycle:isOutdated" && p.Value == "true")) : q.OrderByDescending(c => c.Component.Properties.Any(p => p.Name == "atlas:lifecycle:isOutdated" && p.Value == "true")),
+                "services" => _sortAscending ? q.OrderBy(c => c.Services.Count) : q.OrderByDescending(c => c.Services.Count),
+                _ => q.OrderByDescending(c => c.Vulnerabilities.Count).ThenBy(c => c.Component.Name)
+            };
+        }
+    }
+
+    private IEnumerable<FleetComponentAggregate> SortedLcmComponents
+    {
+        get
+        {
+            var q = FilteredComponents;
+            return _sortColumn switch
+            {
+                "eco" => _sortAscending ? q.OrderBy(c => ExtractEcosystem(c.Component.Purl)) : q.OrderByDescending(c => ExtractEcosystem(c.Component.Purl)),
+                "name" => _sortAscending ? q.OrderBy(c => c.Component.Name) : q.OrderByDescending(c => c.Component.Name),
+                "version" => _sortAscending ? q.OrderBy(c => c.Component.Version) : q.OrderByDescending(c => c.Component.Version),
+                "latest" => _sortAscending ? q.OrderBy(c => c.Component.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:latestVersion")?.Value ?? "") : q.OrderByDescending(c => c.Component.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:latestVersion")?.Value ?? ""),
+                "published" => _sortAscending ? q.OrderBy(c => c.Component.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:publishedAt")?.Value ?? "") : q.OrderByDescending(c => c.Component.Properties.FirstOrDefault(p => p.Name == "atlas:lifecycle:publishedAt")?.Value ?? ""),
+                "services" => _sortAscending ? q.OrderBy(c => c.Services.Count) : q.OrderByDescending(c => c.Services.Count),
+                _ => _sortAscending
+                    ? q.OrderBy(c => c.Component.Properties.Any(p => p.Name == "atlas:lifecycle:isOutdated" && p.Value == "true")).ThenBy(c => c.Component.Name)
+                    : q.OrderByDescending(c => c.Component.Properties.Any(p => p.Name == "atlas:lifecycle:isOutdated" && p.Value == "true")).ThenBy(c => c.Component.Name)
+            };
+        }
+    }
+
+    private IEnumerable<FleetComponentAggregate> SortedLicenseComponents
+    {
+        get
+        {
+            var q = FilteredComponents;
+            return _sortColumn switch
+            {
+                "eco" => _sortAscending ? q.OrderBy(c => ExtractEcosystem(c.Component.Purl)) : q.OrderByDescending(c => ExtractEcosystem(c.Component.Purl)),
+                "name" => _sortAscending ? q.OrderBy(c => c.Component.Name) : q.OrderByDescending(c => c.Component.Name),
+                "version" => _sortAscending ? q.OrderBy(c => c.Component.Version) : q.OrderByDescending(c => c.Component.Version),
+                "license" => _sortAscending ? q.OrderBy(c => c.Component.Licenses.FirstOrDefault()?.License?.Name ?? "") : q.OrderByDescending(c => c.Component.Licenses.FirstOrDefault()?.License?.Name ?? ""),
+                "services" => _sortAscending ? q.OrderBy(c => c.Services.Count) : q.OrderByDescending(c => c.Services.Count),
+                _ => q.OrderBy(c => c.Component.Licenses.FirstOrDefault()?.License?.Name ?? "").ThenBy(c => c.Component.Name)
+            };
+        }
+    }
+
+    private List<VulnerabilityFlatItem> FilteredVulnerabilities
+    {
+        get
+        {
+            var list = new List<VulnerabilityFlatItem>();
+            foreach (var comp in FilteredComponents)
+            {
+                foreach (var v in comp.Vulnerabilities)
+                {
+                    list.Add(new VulnerabilityFlatItem(v, comp.Component, comp.Services.ToList()));
+                }
+            }
+            return list;
+        }
+    }
+
+    private IEnumerable<VulnerabilityFlatItem> SortedVulnerabilities
+    {
+        get
+        {
+            var q = FilteredVulnerabilities;
+            return _sortColumn switch
+            {
+                "severity" => _sortAscending
+                    ? q.OrderBy(i => GetSeverityRank(i.Vuln.Ratings.FirstOrDefault()?.Severity)).ThenBy(i => i.Vuln.Id)
+                    : q.OrderByDescending(i => GetSeverityRank(i.Vuln.Ratings.FirstOrDefault()?.Severity)).ThenBy(i => i.Vuln.Id),
+                "cve" => _sortAscending ? q.OrderBy(i => !string.IsNullOrWhiteSpace(i.Vuln.CveId) ? i.Vuln.CveId : i.Vuln.Id) : q.OrderByDescending(i => !string.IsNullOrWhiteSpace(i.Vuln.CveId) ? i.Vuln.CveId : i.Vuln.Id),
+                "component" => _sortAscending ? q.OrderBy(i => i.Component.Name) : q.OrderByDescending(i => i.Component.Name),
+                "cvss" => _sortAscending ? q.OrderBy(i => i.Vuln.Ratings.FirstOrDefault()?.Score ?? 5.0) : q.OrderByDescending(i => i.Vuln.Ratings.FirstOrDefault()?.Score ?? 5.0),
+                "disclosed" => _sortAscending ? q.OrderBy(i => i.Vuln.Published ?? DateTime.MinValue) : q.OrderByDescending(i => i.Vuln.Published ?? DateTime.MinValue),
+                "services" => _sortAscending ? q.OrderBy(i => i.Services.Count) : q.OrderByDescending(i => i.Services.Count),
+                "fix" => _sortAscending ? q.OrderBy(i => i.Vuln.FixedVersion ?? "") : q.OrderByDescending(i => i.Vuln.FixedVersion ?? ""),
+                _ => q.OrderByDescending(i => GetSeverityRank(i.Vuln.Ratings.FirstOrDefault()?.Severity)).ThenBy(i => i.Vuln.Id)
+            };
+        }
+    }
+
+    private static int GetSeverityRank(string? sev) => sev?.ToLowerInvariant() switch
+    {
+        "critical" => 4,
+        "high" => 3,
+        "moderate" or "medium" => 2,
+        "low" => 1,
+        _ => 2
+    };
+
+    private static string GetSeverityBadgeClass(string? sev) => sev?.ToLowerInvariant() switch
+    {
+        "critical" or "high" => "badge-clean-red",
+        "moderate" or "medium" => "badge-clean-gold",
+        _ => "badge-clean-green"
+    };
+
+    private static string ExtractEcosystem(string purl)
+    {
+        if (string.IsNullOrWhiteSpace(purl)) return "NuGet";
+        if (purl.StartsWith("pkg:npm/", StringComparison.OrdinalIgnoreCase)) return "npm";
+        if (purl.StartsWith("pkg:nuget/", StringComparison.OrdinalIgnoreCase)) return "NuGet";
+        if (purl.StartsWith("pkg:pypi/", StringComparison.OrdinalIgnoreCase)) return "PyPI";
+        if (purl.StartsWith("pkg:maven/", StringComparison.OrdinalIgnoreCase)) return "Maven";
+        if (purl.StartsWith("pkg:golang/", StringComparison.OrdinalIgnoreCase) || purl.StartsWith("pkg:go/", StringComparison.OrdinalIgnoreCase)) return "Go";
+        return "NuGet";
+    }
+
+    private static string FormatRelativeAge(DateTime? date)
+    {
+        if (!date.HasValue) return "Unknown";
+        var span = DateTime.UtcNow - date.Value;
+        if (span.TotalDays < 1) return "Today";
+        if (span.TotalDays < 2) return "Yesterday";
+        if (span.TotalDays < 7) return $"{(int)span.TotalDays} days ago";
+        if (span.TotalDays < 30) return $"{(int)(span.TotalDays / 7)} weeks ago";
+        if (span.TotalDays < 365) return $"{(int)(span.TotalDays / 30)} months ago";
+        var years = (int)(span.TotalDays / 365);
+        return years == 1 ? "1 year ago" : $"{years} years ago";
+    }
+
+    private record VersionDriftInfo(string Label, string BadgeClass);
+
+    private static VersionDriftInfo ClassifyVersionDrift(string currentVer, string latestVer, bool isDeprecated)
+    {
+        if (isDeprecated) return new VersionDriftInfo("🚨 Deprecated", "badge-clean-red");
+        if (string.Equals(currentVer, latestVer, StringComparison.OrdinalIgnoreCase))
+            return new VersionDriftInfo("✓ Up to date", "badge-clean-green");
+
+        var curMajor = currentVer.Split('.')[0].TrimStart('v', '^', '~');
+        var latMajor = latestVer.Split('.')[0].TrimStart('v', '^', '~');
+
+        if (int.TryParse(curMajor, out var cMaj) && int.TryParse(latMajor, out var lMaj) && lMaj > cMaj)
+        {
+            return new VersionDriftInfo($"Major (+{lMaj - cMaj})", "badge-clean-gold");
+        }
+
+        return new VersionDriftInfo("Update Avail", "badge-clean-purple");
+    }
+
+    private async Task RescanFleetCvesAsync()
+    {
+        _isSyncing = true;
+        _syncMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var report = await SyncService.SyncAllServicesAsync();
+            _syncMessage = $"✅ {report.Message}";
+        }
+        catch (Exception ex)
+        {
+            _syncMessage = $"❌ Failed to rescan CVEs: {ex.Message}";
+        }
+        finally
+        {
+            _isSyncing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportFleetSbomAsync()
+    {
+        var allComponents = GetAllFleetComponents();
+        var fleetSbom = new CycloneDxSbom
+        {
+            BomFormat = "CycloneDX",
+            SpecVersion = "1.5",
+            Metadata = new CycloneDxMetadata
+            {
+                Timestamp = DateTime.UtcNow,
+                Component = new CycloneDxComponent
+                {
+                    Type = "application",
+                    Name = "EnterpriseFleet",
+                    Version = "1.0.0",
+                    Description = "Global Consolidated Enterprise SBOM"
+                }
+            },
+            Components = allComponents.Select(c => c.Component).ToList(),
+            Vulnerabilities = allComponents.SelectMany(c => c.Vulnerabilities).DistinctBy(v => v.Id).ToList()
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(fleetSbom, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        await JS.InvokeVoidAsync("downloadFileFromText", "fleet-cyclonedx-bom.json", json);
+    }
+
+    private static readonly Markdig.MarkdownPipeline _markdownPipeline = new Markdig.MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .Build();
+
+    private static string RenderMarkdown(string? markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown)) return string.Empty;
+        try
+        {
+            return Markdig.Markdown.ToHtml(markdown, _markdownPipeline);
+        }
+        catch
+        {
+            return System.Web.HttpUtility.HtmlEncode(markdown);
+        }
+    }
+}

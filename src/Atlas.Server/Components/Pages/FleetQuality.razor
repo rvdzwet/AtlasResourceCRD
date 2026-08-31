@@ -1,0 +1,217 @@
+@page "/quality"
+@rendermode InteractiveServer
+@inject SpecDocumentRepository SpecRepo
+@inject FleetIndexService FleetIndex
+
+<PageTitle>Fleet Quality & Technical Debt - Atlas Enterprise Hub</PageTitle>
+
+<!-- Header in Clean SaaS Card -->
+<div class="saas-card" style="margin-bottom: 1.5rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h1 class="saas-card-title" style="font-size: 1.65rem;">
+                ⭐ Fleet Quality & Technical Debt Matrix
+            </h1>
+            <p style="color: var(--text-secondary); margin-top: 0.25rem; font-size: 0.92rem;">
+                Consolidated ISO 25010 / SIG Maintainability ratings, Code Review grades, and architectural debt across all @SpecRepo.TotalServicesCount.ToString("N0") registered applications.
+            </p>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <div class="badge-clean-gold" style="font-size: 0.9rem; padding: 0.45rem 1rem;">
+                Fleet Average: ⭐ @AvgFleetStars.ToString("0.0") / 5.0
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Leaderboard Table -->
+<div class="saas-card" style="margin-bottom: 1.5rem; padding: 0; overflow: hidden;">
+    <div style="padding: 1.25rem 1.5rem 0.75rem 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h2 class="saas-card-title" style="font-size: 1.2rem;">Enterprise Maintainability Leaderboard</h2>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">SIG 5-Star Benchmark Ranking</div>
+        </div>
+
+        <div class="topbar-search-wrap" style="width: 260px;">
+            <span class="topbar-search-icon">🔍</span>
+            <input type="text" class="topbar-search-input" placeholder="Search leaderboard..."
+                   value="@_leaderboardSearch" @oninput="OnLeaderboardSearchChanged" />
+        </div>
+    </div>
+
+    <div style="overflow-x: auto;">
+        <table class="saas-table" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th>Service Name</th>
+                    <th>Tier</th>
+                    <th>Overall SIG Score</th>
+                    <th>Review Grade</th>
+                    <th>Maintainability Level</th>
+                    <th>Production Readiness</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_leaderboardData.Items.Count == 0)
+                {
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                            No services match your search filter.
+                        </td>
+                    </tr>
+                }
+                @foreach (var s in _leaderboardData.Items)
+                {
+                    <tr>
+                        <td>
+                            <a href="/catalog/@s.Name" style="color: var(--primary-purple); font-weight: 700; text-decoration: none;">
+                                @s.Name
+                            </a>
+                        </td>
+                        <td><span class="badge-clean-purple">@s.Tier</span></td>
+                        <td><span class="badge-clean-gold">⭐ @s.SigStars.ToString("0.0")</span></td>
+                        <td><span class="badge-clean-green">Grade @s.ReviewGrade</span></td>
+                        <td style="color: var(--text-secondary);">@s.MaintainabilityLevel</td>
+                        <td>
+                            <span class="@(s.ProductionReadiness == "Approved" || s.ProductionReadiness == "Ready" ? "badge-clean-green" : "badge-clean-gold")">
+                                @s.ProductionReadiness
+                            </span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <PaginationControls
+        CurrentPage="@_leaderboardData.Page"
+        TotalPages="@_leaderboardData.TotalPages"
+        TotalItems="@_leaderboardData.TotalItems"
+        PageSize="@_leaderboardData.PageSize"
+        CurrentPageChanged="SetLeaderboardPage"
+        PageSizeChanged="OnLeaderboardPageSizeChanged" />
+</div>
+
+<!-- Fleet Technical Debt Items -->
+<div class="saas-card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1.25rem 1.5rem 0.75rem 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h2 class="saas-card-title" style="font-size: 1.2rem;">Fleet Technical Debt & Modernization Backlog</h2>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">Actionable engineering debt items across all services</div>
+        </div>
+
+        <div class="topbar-search-wrap" style="width: 260px;">
+            <span class="topbar-search-icon">🔍</span>
+            <input type="text" class="topbar-search-input" placeholder="Search technical debt..."
+                   value="@_debtSearch" @oninput="OnDebtSearchChanged" />
+        </div>
+    </div>
+
+    <ul style="list-style: none; padding: 0; margin: 0;">
+        @if (_debtData.Items.Count == 0)
+        {
+            <li style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+                🎉 No active technical debt items found.
+            </li>
+        }
+        @foreach (var item in _debtData.Items)
+        {
+            <li style="padding: 0.85rem 1.5rem; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 0.75rem;">
+                <a href="/catalog/@item.Service" class="badge-clean-purple" style="text-decoration: none; flex-shrink: 0;">
+                    @item.Service
+                </a>
+                <span class="badge-clean-gold" style="font-size: 0.72rem; flex-shrink: 0;">@item.Tier</span>
+                <span style="color: var(--text-main); font-size: 0.9rem;">@item.DebtItem</span>
+            </li>
+        }
+    </ul>
+
+    <PaginationControls
+        CurrentPage="@_debtData.Page"
+        TotalPages="@_debtData.TotalPages"
+        TotalItems="@_debtData.TotalItems"
+        PageSize="@_debtData.PageSize"
+        CurrentPageChanged="SetDebtPage"
+        PageSizeChanged="OnDebtPageSizeChanged" />
+</div>
+
+@code {
+    private string _leaderboardSearch = "";
+    private int _leaderboardPage = 1;
+    private int _leaderboardPageSize = 25;
+    private PagedResult<ServiceSummaryRecord> _leaderboardData = new();
+
+    private string _debtSearch = "";
+    private int _debtPage = 1;
+    private int _debtPageSize = 25;
+    private PagedResult<TechDebtItemDto> _debtData = new();
+
+    private double AvgFleetStars => SpecRepo.TotalServicesCount > 0
+        ? SpecRepo.GetAllSummaries().Average(s => s.SigStars)
+        : 5.0;
+
+    protected override void OnInitialized()
+    {
+        LoadLeaderboard();
+        LoadDebt();
+    }
+
+    private void LoadLeaderboard()
+    {
+        _leaderboardData = SpecRepo.GetPagedSummaries(
+            page: _leaderboardPage,
+            pageSize: _leaderboardPageSize,
+            search: _leaderboardSearch,
+            sortBy: "stars",
+            descending: true);
+    }
+
+    private void LoadDebt()
+    {
+        _debtData = FleetIndex.GetPagedTechDebt(
+            page: _debtPage,
+            pageSize: _debtPageSize,
+            search: _debtSearch);
+    }
+
+    private void OnLeaderboardSearchChanged(ChangeEventArgs e)
+    {
+        _leaderboardSearch = e.Value?.ToString() ?? "";
+        _leaderboardPage = 1;
+        LoadLeaderboard();
+    }
+
+    private void SetLeaderboardPage(int page)
+    {
+        _leaderboardPage = page;
+        LoadLeaderboard();
+    }
+
+    private void OnLeaderboardPageSizeChanged(int size)
+    {
+        _leaderboardPageSize = size;
+        _leaderboardPage = 1;
+        LoadLeaderboard();
+    }
+
+    private void OnDebtSearchChanged(ChangeEventArgs e)
+    {
+        _debtSearch = e.Value?.ToString() ?? "";
+        _debtPage = 1;
+        LoadDebt();
+    }
+
+    private void SetDebtPage(int page)
+    {
+        _debtPage = page;
+        LoadDebt();
+    }
+
+    private void OnDebtPageSizeChanged(int size)
+    {
+        _debtPageSize = size;
+        _debtPage = 1;
+        LoadDebt();
+    }
+}

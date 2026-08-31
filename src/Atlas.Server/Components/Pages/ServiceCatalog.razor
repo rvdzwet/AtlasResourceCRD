@@ -1,0 +1,329 @@
+@page "/catalog"
+@rendermode InteractiveServer
+@inject SpecDocumentRepository SpecRepo
+@inject NavigationManager Nav
+
+<PageTitle>Service Catalog - Atlas Enterprise Hub</PageTitle>
+
+<!-- Header & Controls in Clean SaaS Card -->
+<div class="saas-card" style="margin-bottom: 1.5rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h1 class="saas-card-title" style="font-size: 1.65rem;">
+                📦 Enterprise Service Catalog
+            </h1>
+            <p style="color: var(--text-secondary); margin-top: 0.25rem; font-size: 0.92rem;">
+                Search, filter, and inspect all @TotalCatalogCount.ToString("N0") microservices across your enterprise fleet.
+            </p>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div class="topbar-search-wrap" style="width: 320px;">
+                <span class="topbar-search-icon">🔍</span>
+                <input type="text" class="topbar-search-input" placeholder="Search services, languages, owners..."
+                       value="@_searchTerm" @oninput="OnSearchChanged" />
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 0.25rem; background: var(--bg-subtle); padding: 0.2rem; border-radius: 8px;">
+                <button class="saas-filter-pill @(_viewMode == "table" ? "active" : "")" style="padding: 0.25rem 0.6rem; font-size: 0.8rem;" @onclick='() => _viewMode = "table"'>
+                    📋 Table
+                </button>
+                <button class="saas-filter-pill @(_viewMode == "cards" ? "active" : "")" style="padding: 0.25rem 0.6rem; font-size: 0.8rem;" @onclick='() => _viewMode = "cards"'>
+                    🎴 Cards
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Domain & Tier Filter Facets -->
+    <div style="margin-top: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem;">
+        <!-- Domain Facet -->
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <strong style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; min-width: 70px;">Domain:</strong>
+            <button class="saas-filter-pill @(_selectedDomain == "All" ? "active" : "")" @onclick='() => SetDomain("All")'>
+                All Domains (@TotalCatalogCount.ToString("N0"))
+            </button>
+            @foreach (var dom in _availableDomains)
+            {
+                <button class="saas-filter-pill @(_selectedDomain == dom ? "active" : "")" @onclick="() => SetDomain(dom)">
+                    🏛️ @dom
+                </button>
+            }
+        </div>
+
+        <!-- Tier Facet -->
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <strong style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; min-width: 70px;">Tier:</strong>
+            <button class="saas-filter-pill @(_selectedTier == "All" ? "active" : "")" @onclick='() => SetTier("All")'>
+                All Tiers
+            </button>
+            @foreach (var tier in _availableTiers)
+            {
+                <button class="saas-filter-pill @(_selectedTier == tier ? "active" : "")" @onclick="() => SetTier(tier)">
+                    @tier
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+@if (_viewMode == "table")
+{
+    <!-- High-Density Enterprise Data Grid Table -->
+    <div class="saas-card" style="padding: 0; overflow-x: auto;">
+        <table class="saas-table" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th style="cursor: pointer;" @onclick='() => SetSort("name")'>
+                        Service Name @GetSortIcon("name")
+                    </th>
+                    <th style="cursor: pointer;" @onclick='() => SetSort("tier")'>
+                        Tier @GetSortIcon("tier")
+                    </th>
+                    <th>Tech Stack</th>
+                    <th>Owner</th>
+                    <th>Lifecycle</th>
+                    <th style="cursor: pointer;" @onclick='() => SetSort("stars")'>
+                        SIG Stars @GetSortIcon("stars")
+                    </th>
+                    <th style="cursor: pointer;" @onclick='() => SetSort("threats")'>
+                        Threats @GetSortIcon("threats")
+                    </th>
+                    <th style="cursor: pointer;" @onclick='() => SetSort("cves")'>
+                        CVEs @GetSortIcon("cves")
+                    </th>
+                    <th>Readiness</th>
+                    <th style="text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_pagedData.Items.Count == 0)
+                {
+                    <tr>
+                        <td colspan="10" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+                            🔍 No services matched the current search filters.
+                        </td>
+                    </tr>
+                }
+                @foreach (var s in _pagedData.Items)
+                {
+                    var frameworks = s.Frameworks != null && s.Frameworks.Count > 0
+                        ? string.Join(", ", s.Frameworks.Take(2))
+                        : "";
+
+                    <tr style="cursor: pointer;" @onclick="() => NavigateToDetail(s.Name)">
+                        <td>
+                            <div style="font-weight: 700; color: var(--primary-purple); font-size: 0.98rem;">
+                                @s.Name
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.15rem;">
+                                @(string.IsNullOrWhiteSpace(s.Description) ? s.Purpose : s.Description)
+                            </div>
+                        </td>
+
+                        <td>
+                            <span class="badge-clean-purple">@s.Tier</span>
+                        </td>
+
+                        <td>
+                            <div style="font-weight: 600; color: var(--text-main);">@s.PrimaryLanguage</div>
+                            @if (!string.IsNullOrWhiteSpace(frameworks))
+                            {
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">@frameworks</div>
+                            }
+                        </td>
+
+                        <td style="color: var(--text-secondary);">@s.Owner</td>
+
+                        <td>
+                            <span class="badge-clean-green">@s.Lifecycle</span>
+                        </td>
+
+                        <td>
+                            <span class="badge-clean-gold">⭐ @s.SigStars.ToString("0.0")</span>
+                        </td>
+
+                        <td>
+                            @if (s.ThreatCount > 0)
+                            {
+                                <span class="badge-clean-gold">🛡️ @s.ThreatCount</span>
+                            }
+                            else
+                            {
+                                <span class="badge-clean-green">🛡️ 0</span>
+                            }
+                        </td>
+
+                        <td>
+                            @if (s.CriticalCveCount + s.HighCveCount > 0)
+                            {
+                                <span class="badge-clean-red">🚨 @(s.CriticalCveCount + s.HighCveCount) CVEs</span>
+                            }
+                            else
+                            {
+                                <span class="badge-clean-green">🟢 0</span>
+                            }
+                        </td>
+
+                        <td>
+                            <span class="@(s.ProductionReadiness == "Approved" || s.ProductionReadiness == "Ready" ? "badge-clean-green" : "badge-clean-gold")">
+                                @s.ProductionReadiness
+                            </span>
+                        </td>
+
+                        <td style="text-align: right;">
+                            <a href="/catalog/@s.Name" class="saas-filter-pill" style="text-decoration: none; display: inline-block;">
+                                View ➔
+                            </a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <!-- Server-Side Pagination Bar -->
+        <PaginationControls
+            CurrentPage="@_pagedData.Page"
+            TotalPages="@_pagedData.TotalPages"
+            TotalItems="@_pagedData.TotalItems"
+            PageSize="@_pagedData.PageSize"
+            CurrentPageChanged="SetPage"
+            PageSizeChanged="OnPageSizeChanged" />
+    </div>
+}
+else
+{
+    <!-- High-Density Card Grid View -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        @foreach (var s in _pagedData.Items)
+        {
+            <div class="saas-card" style="cursor: pointer; transition: transform 0.15s ease;" @onclick="() => NavigateToDetail(s.Name)">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+                    <h3 style="font-size: 1.1rem; color: var(--primary-purple); font-weight: 700;">@s.Name</h3>
+                    <span class="badge-clean-purple">@s.Tier</span>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); height: 40px; overflow: hidden; margin-bottom: 0.75rem;">
+                    @(string.IsNullOrWhiteSpace(s.Description) ? s.Purpose : s.Description)
+                </p>
+                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 0.75rem; font-size: 0.85rem;">
+                    <span style="font-weight: 600;">💻 @s.PrimaryLanguage</span>
+                    <span class="badge-clean-gold">⭐ @s.SigStars.ToString("0.0")</span>
+                    <span>🛡️ @s.ThreatCount Threats</span>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Server-Side Pagination Bar for Cards -->
+    <div class="saas-card" style="padding: 0;">
+        <PaginationControls
+            CurrentPage="@_pagedData.Page"
+            TotalPages="@_pagedData.TotalPages"
+            TotalItems="@_pagedData.TotalItems"
+            PageSize="@_pagedData.PageSize"
+            CurrentPageChanged="SetPage"
+            PageSizeChanged="OnPageSizeChanged" />
+    </div>
+}
+
+@code {
+    private string _searchTerm = "";
+    private string _selectedTier = "All";
+    private string _selectedDomain = "All";
+    private string _sortColumn = "name";
+    private bool _sortAscending = true;
+    private string _viewMode = "table"; // "table" or "cards"
+    private int _currentPage = 1;
+    private int _pageSize = 25;
+
+    private List<string> _availableDomains = new();
+    private List<string> _availableTiers = new();
+    private PagedResult<ServiceSummaryRecord> _pagedData = new();
+
+    private int TotalCatalogCount => SpecRepo.TotalServicesCount;
+
+    protected override void OnInitialized()
+    {
+        RefreshFacets();
+        LoadData();
+    }
+
+    private void RefreshFacets()
+    {
+        var summaries = SpecRepo.GetAllSummaries();
+        _availableDomains = summaries.Select(s => s.Domain).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(d => d).ToList();
+        _availableTiers = summaries.Select(s => s.Tier).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(t => t).ToList();
+    }
+
+    private void LoadData()
+    {
+        _pagedData = SpecRepo.GetPagedSummaries(
+            page: _currentPage,
+            pageSize: _pageSize,
+            search: _searchTerm,
+            domain: _selectedDomain,
+            tier: _selectedTier,
+            sortBy: _sortColumn,
+            descending: !_sortAscending);
+    }
+
+    private void OnSearchChanged(ChangeEventArgs e)
+    {
+        _searchTerm = e.Value?.ToString() ?? "";
+        _currentPage = 1;
+        LoadData();
+    }
+
+    private void SetDomain(string domain)
+    {
+        _selectedDomain = domain;
+        _currentPage = 1;
+        LoadData();
+    }
+
+    private void SetTier(string tier)
+    {
+        _selectedTier = tier;
+        _currentPage = 1;
+        LoadData();
+    }
+
+    private void SetPage(int page)
+    {
+        _currentPage = page;
+        LoadData();
+    }
+
+    private void OnPageSizeChanged(int size)
+    {
+        _pageSize = size;
+        _currentPage = 1;
+        LoadData();
+    }
+
+    private void SetSort(string column)
+    {
+        if (_sortColumn == column)
+        {
+            _sortAscending = !_sortAscending;
+        }
+        else
+        {
+            _sortColumn = column;
+            _sortAscending = true;
+        }
+        _currentPage = 1;
+        LoadData();
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (_sortColumn != column) return "";
+        return _sortAscending ? " ▲" : " ▼";
+    }
+
+    private void NavigateToDetail(string serviceName)
+    {
+        Nav.NavigateTo($"/catalog/{serviceName}");
+    }
+}

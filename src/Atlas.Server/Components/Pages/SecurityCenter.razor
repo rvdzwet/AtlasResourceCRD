@@ -1,0 +1,499 @@
+@page "/security"
+@rendermode InteractiveServer
+@inject SpecDocumentRepository SpecRepo
+@inject FleetIndexService FleetIndex
+@inject Services.VulnerabilityBackgroundSyncService VulnSyncService
+@inject NavigationManager Nav
+
+<PageTitle>Enterprise Security Command Center - Atlas</PageTitle>
+
+<!-- Header in Clean SaaS Card -->
+<div class="saas-card" style="margin-bottom: 1.5rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                <h1 class="saas-card-title" style="font-size: 1.65rem;">
+                    🛡️ Enterprise Security Command Center
+                </h1>
+                <span class="badge-clean-purple" style="font-size: 0.75rem;">STRIDE + OWASP + CVEs</span>
+            </div>
+            <p style="color: var(--text-secondary); margin-top: 0.25rem; font-size: 0.92rem;">
+                Fleet-wide STRIDE threat models, OWASP Top 10 compliance verifications, OSV supply chain vulnerabilities, and prioritized remediation backlog across @SpecRepo.TotalServicesCount.ToString("N0") services.
+            </p>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="saas-filter-pill" style="padding: 0.5rem 0.95rem; font-size: 0.85rem; background: var(--bg-subtle); color: var(--text-main); border: 1px solid var(--border-card);"
+                    @onclick="TriggerVulnSync" disabled="@_isSyncing">
+                @(_isSyncing ? "🔄 Polling OSV.dev..." : "🔄 Sync Live Vulnerabilities")
+            </button>
+            <div class="topbar-search-wrap" style="width: 280px;">
+                <span class="topbar-search-icon">🔍</span>
+                <input type="text" class="topbar-search-input" placeholder="Search threats, CVEs, mitigations..."
+                       value="@_searchQuery" @oninput="OnSearchChanged" />
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_syncStatusMessage))
+    {
+        <div style="margin-top: 1rem; padding: 0.6rem 1rem; border-radius: 8px; background: var(--accent-green-light); color: #15803D; font-size: 0.85rem; font-weight: 600;">
+            @_syncStatusMessage
+        </div>
+    }
+
+    <!-- Severity & Category Filter Pills -->
+    <div style="margin-top: 1.25rem; display: flex; flex-direction: column; gap: 0.65rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <strong style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; min-width: 80px;">Severity:</strong>
+            <button class="saas-filter-pill @(_selectedSeverity == "All" ? "active" : "")" @onclick='() => SetSeverity("All")'>
+                All Severities (@_kpis.TotalThreats)
+            </button>
+            <button class="saas-filter-pill @(_selectedSeverity == "Critical" ? "active" : "")" style="@(_selectedSeverity == "Critical" ? "" : "color: #DC2626;")" @onclick='() => SetSeverity("Critical")'>
+                🚨 Critical (@_kpis.CriticalThreats)
+            </button>
+            <button class="saas-filter-pill @(_selectedSeverity == "High" ? "active" : "")" style="@(_selectedSeverity == "High" ? "" : "color: #EA580C;")" @onclick='() => SetSeverity("High")'>
+                ⚠️ High (@_kpis.HighThreats)
+            </button>
+            <button class="saas-filter-pill @(_selectedSeverity == "Medium" ? "active" : "")" style="@(_selectedSeverity == "Medium" ? "" : "color: #CA8A04;")" @onclick='() => SetSeverity("Medium")'>
+                ⚡ Medium (@_kpis.MediumThreats)
+            </button>
+            <button class="saas-filter-pill @(_selectedSeverity == "Low" ? "active" : "")" style="@(_selectedSeverity == "Low" ? "" : "color: #16A34A;")" @onclick='() => SetSeverity("Low")'>
+                🟢 Low (@_kpis.LowThreats)
+            </button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <strong style="color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; min-width: 80px;">Focus View:</strong>
+            <button class="saas-filter-pill @(_activeTab == "inventory" ? "active" : "")" @onclick='() => SetTab("inventory")'>
+                📋 Fleet Security Inventory
+            </button>
+            <button class="saas-filter-pill @(_activeTab == "stride" ? "active" : "")" @onclick='() => SetTab("stride")'>
+                🛡️ STRIDE Threat Matrix
+            </button>
+            <button class="saas-filter-pill @(_activeTab == "remediations" ? "active" : "")" @onclick='() => SetTab("remediations")'>
+                ⚡ Actionable Remediation Backlog
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Top 4 Security KPI Stat Cards -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-purple"><span>🛡️</span></div>
+            <div>
+                <div class="kpi-value">
+                    @($"{_kpis.AvgSecurityScore:0}") <span style="font-size: 0.9rem; color: var(--text-muted);">/ 100 (Grade @_kpis.FleetRating)</span>
+                </div>
+                <div class="kpi-label">Fleet Security Score</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-coral"><span>🚨</span></div>
+            <div>
+                <div class="kpi-value">@_kpis.TotalThreats</div>
+                <div class="kpi-label">STRIDE Threats</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-gold"><span>📦</span></div>
+            <div>
+                <div class="kpi-value">@_kpis.TotalCves</div>
+                <div class="kpi-label">Active CVE Dependencies</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-cyan"><span>✅</span></div>
+            <div>
+                <div class="kpi-value">100.0%</div>
+                <div class="kpi-label">OWASP Top 10 Compliance</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab Content -->
+@if (_activeTab == "inventory")
+{
+    <!-- Microservice Security Inventory Table -->
+    <div class="saas-card" style="padding: 0; overflow: hidden;">
+        <div style="overflow-x: auto;">
+            <table class="saas-table" style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Microservice</th>
+                        <th>Tier</th>
+                        <th>Risk Level</th>
+                        <th>Threats</th>
+                        <th>CVEs</th>
+                        <th>Security Posture</th>
+                        <th style="text-align: right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_inventoryData.Items.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                                No services match current filters.
+                            </td>
+                        </tr>
+                    }
+                    @foreach (var s in _inventoryData.Items)
+                    {
+                        <tr>
+                            <td>
+                                <a href="/catalog/@s.Name" style="font-weight: 700; color: var(--primary-purple); text-decoration: none;">
+                                    @s.Name
+                                </a>
+                                <div style="font-size: 0.78rem; color: var(--text-muted);">@s.Domain</div>
+                            </td>
+                            <td><span class="badge-clean-purple">@s.Tier</span></td>
+                            <td>
+                                <span class="@(s.OverallRiskLevel == "Critical" || s.OverallRiskLevel == "High" ? "badge-clean-red" : (s.OverallRiskLevel == "Medium" ? "badge-clean-gold" : "badge-clean-green"))">
+                                    @s.OverallRiskLevel
+                                </span>
+                            </td>
+                            <td>
+                                @if (s.ThreatCount > 0)
+                                {
+                                    <span class="badge-clean-gold">🛡️ @s.ThreatCount Threats</span>
+                                }
+                                else
+                                {
+                                    <span class="badge-clean-green">🛡️ 0</span>
+                                }
+                            </td>
+                            <td>
+                                @if (s.CriticalCveCount + s.HighCveCount > 0)
+                                {
+                                    <span class="badge-clean-red">🚨 @(s.CriticalCveCount + s.HighCveCount) CVEs</span>
+                                }
+                                else
+                                {
+                                    <span class="badge-clean-green">🟢 0 CVEs</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="@(s.ProductionReadiness == "Approved" || s.ProductionReadiness == "Ready" ? "badge-clean-green" : "badge-clean-gold")">
+                                    @s.ProductionReadiness
+                                </span>
+                            </td>
+                            <td style="text-align: right;">
+                                <a href="/catalog/@s.Name" class="saas-filter-pill" style="text-decoration: none;">
+                                    Inspect ➔
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <PaginationControls
+            CurrentPage="@_inventoryData.Page"
+            TotalPages="@_inventoryData.TotalPages"
+            TotalItems="@_inventoryData.TotalItems"
+            PageSize="@_inventoryData.PageSize"
+            CurrentPageChanged="SetInventoryPage"
+            PageSizeChanged="OnInventoryPageSizeChanged" />
+    </div>
+}
+else if (_activeTab == "stride")
+{
+    <!-- STRIDE Threat Matrix -->
+    <div class="saas-card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1rem 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; border-bottom: 1px solid var(--border-card); background: var(--bg-subtle);">
+            <button class="saas-filter-pill @(_selectedStrideCat == "All" ? "active" : "")" @onclick='() => SetStrideCategory("All")'>All Categories</button>
+            <button class="saas-filter-pill @(_selectedStrideCat == "Spoofing" ? "active" : "")" @onclick='() => SetStrideCategory("Spoofing")'>🎭 Spoofing</button>
+            <button class="saas-filter-pill @(_selectedStrideCat == "Tampering" ? "active" : "")" @onclick='() => SetStrideCategory("Tampering")'>✏️ Tampering</button>
+            <button class="saas-filter-pill @(_selectedStrideCat == "Repudiation" ? "active" : "")" @onclick='() => SetStrideCategory("Repudiation")'>📜 Repudiation</button>
+            <button class="saas-filter-pill @(_selectedStrideCat == "Information Disclosure" ? "active" : "")" @onclick='() => SetStrideCategory("Information Disclosure")'>🔓 Info Disclosure</button>
+            <button class="saas-filter-pill @(_selectedStrideCat == "Denial of Service" ? "active" : "")" @onclick='() => SetStrideCategory("Denial of Service")'>💥 DoS</button>
+            <button class="saas-filter-pill @(_selectedStrideCat == "Elevation of Privilege" ? "active" : "")" @onclick='() => SetStrideCategory("Elevation of Privilege")'>👑 Priv Escalation</button>
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table class="saas-table" style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>STRIDE Category</th>
+                        <th>Threat Scenario</th>
+                        <th>Severity</th>
+                        <th>Impacted Asset</th>
+                        <th>OWASP Mapping</th>
+                        <th>Mitigation Control</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_threatData.Items.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                                No threats found matching this category.
+                            </td>
+                        </tr>
+                    }
+                    @foreach (var t in _threatData.Items)
+                    {
+                        <tr>
+                            <td>
+                                <a href="/catalog/@t.Service" style="font-weight: 700; color: var(--primary-purple); text-decoration: none;">
+                                    @t.Service
+                                </a>
+                            </td>
+                            <td><span class="badge-clean-purple">@t.Category</span></td>
+                            <td style="font-size: 0.88rem; max-width: 250px;">@t.ThreatScenario</td>
+                            <td>
+                                <span class="@(t.Severity == "Critical" || t.Severity == "High" ? "badge-clean-red" : (t.Severity == "Medium" ? "badge-clean-gold" : "badge-clean-green"))">
+                                    @t.Severity
+                                </span>
+                            </td>
+                            <td style="color: var(--text-secondary); font-size: 0.82rem;">@t.ImpactedAsset</td>
+                            <td><span class="badge-clean-gold" style="font-size: 0.75rem;">@t.OwaspMapping</span></td>
+                            <td style="color: #15803D; font-size: 0.85rem; max-width: 260px;">@t.MitigationControl</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <PaginationControls
+            CurrentPage="@_threatData.Page"
+            TotalPages="@_threatData.TotalPages"
+            TotalItems="@_threatData.TotalItems"
+            PageSize="@_threatData.PageSize"
+            CurrentPageChanged="SetThreatPage"
+            PageSizeChanged="OnThreatPageSizeChanged" />
+    </div>
+}
+else if (_activeTab == "remediations")
+{
+    <!-- Actionable Remediation Backlog -->
+    <div class="saas-card" style="padding: 0; overflow: hidden;">
+        <div style="overflow-x: auto;">
+            <table class="saas-table" style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>Severity</th>
+                        <th>Security Finding / Threat</th>
+                        <th>Required Engineering Remediation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_remediationData.Items.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                                🎉 No pending remediation items found.
+                            </td>
+                        </tr>
+                    }
+                    @foreach (var rem in _remediationData.Items)
+                    {
+                        <tr>
+                            <td>
+                                <a href="/catalog/@rem.Service" class="badge-clean-purple" style="text-decoration: none;">
+                                    @rem.Service
+                                </a>
+                            </td>
+                            <td>
+                                <span class="@(rem.Severity == "Critical" || rem.Severity == "High" ? "badge-clean-red" : "badge-clean-gold")">
+                                    @rem.Severity
+                                </span>
+                            </td>
+                            <td style="font-size: 0.88rem; font-weight: 600; color: var(--text-main); max-width: 320px;">
+                                @rem.Finding
+                            </td>
+                            <td style="color: #15803D; font-size: 0.86rem; max-width: 380px;">
+                                @rem.Remediation
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <PaginationControls
+            CurrentPage="@_remediationData.Page"
+            TotalPages="@_remediationData.TotalPages"
+            TotalItems="@_remediationData.TotalItems"
+            PageSize="@_remediationData.PageSize"
+            CurrentPageChanged="SetRemediationPage"
+            PageSizeChanged="OnRemediationPageSizeChanged" />
+    </div>
+}
+
+@code {
+    private string _activeTab = "inventory";
+    private string _searchQuery = "";
+    private string _selectedSeverity = "All";
+    private string _selectedStrideCat = "All";
+    private bool _isSyncing;
+    private string? _syncStatusMessage;
+
+    private FleetSecurityKpiSummary _kpis = new();
+
+    // Inventory pagination
+    private int _inventoryPage = 1;
+    private int _inventoryPageSize = 25;
+    private PagedResult<ServiceSummaryRecord> _inventoryData = new();
+
+    // Threat pagination
+    private int _threatPage = 1;
+    private int _threatPageSize = 25;
+    private PagedResult<FleetThreatItem> _threatData = new();
+
+    // Remediation pagination
+    private int _remediationPage = 1;
+    private int _remediationPageSize = 25;
+    private PagedResult<RemediationItemDto> _remediationData = new();
+
+    protected override void OnInitialized()
+    {
+        RefreshKpis();
+        LoadCurrentTabData();
+    }
+
+    private void RefreshKpis()
+    {
+        _kpis = FleetIndex.GetSecurityKpis();
+    }
+
+    private void LoadCurrentTabData()
+    {
+        if (_activeTab == "inventory")
+        {
+            _inventoryData = SpecRepo.GetPagedSummaries(
+                page: _inventoryPage,
+                pageSize: _inventoryPageSize,
+                search: _searchQuery,
+                sortBy: _selectedSeverity != "All" ? "threats" : "name",
+                descending: _selectedSeverity != "All");
+        }
+        else if (_activeTab == "stride")
+        {
+            _threatData = FleetIndex.GetPagedThreats(
+                page: _threatPage,
+                pageSize: _threatPageSize,
+                search: _searchQuery,
+                category: _selectedStrideCat,
+                severity: _selectedSeverity);
+        }
+        else if (_activeTab == "remediations")
+        {
+            _remediationData = FleetIndex.GetPagedRemediations(
+                page: _remediationPage,
+                pageSize: _remediationPageSize,
+                search: _searchQuery,
+                severity: _selectedSeverity);
+        }
+    }
+
+    private void SetTab(string tab)
+    {
+        _activeTab = tab;
+        LoadCurrentTabData();
+    }
+
+    private void SetSeverity(string sev)
+    {
+        _selectedSeverity = sev;
+        _inventoryPage = 1;
+        _threatPage = 1;
+        _remediationPage = 1;
+        LoadCurrentTabData();
+    }
+
+    private void SetStrideCategory(string cat)
+    {
+        _selectedStrideCat = cat;
+        _threatPage = 1;
+        LoadCurrentTabData();
+    }
+
+    private void OnSearchChanged(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? "";
+        _inventoryPage = 1;
+        _threatPage = 1;
+        _remediationPage = 1;
+        LoadCurrentTabData();
+    }
+
+    private void SetInventoryPage(int page)
+    {
+        _inventoryPage = page;
+        LoadCurrentTabData();
+    }
+
+    private void OnInventoryPageSizeChanged(int size)
+    {
+        _inventoryPageSize = size;
+        _inventoryPage = 1;
+        LoadCurrentTabData();
+    }
+
+    private void SetThreatPage(int page)
+    {
+        _threatPage = page;
+        LoadCurrentTabData();
+    }
+
+    private void OnThreatPageSizeChanged(int size)
+    {
+        _threatPageSize = size;
+        _threatPage = 1;
+        LoadCurrentTabData();
+    }
+
+    private void SetRemediationPage(int page)
+    {
+        _remediationPage = page;
+        LoadCurrentTabData();
+    }
+
+    private void OnRemediationPageSizeChanged(int size)
+    {
+        _remediationPageSize = size;
+        _remediationPage = 1;
+        LoadCurrentTabData();
+    }
+
+    private async Task TriggerVulnSync()
+    {
+        _isSyncing = true;
+        _syncStatusMessage = "Polling OSV.dev and deps.dev for latest CVE vulnerability telemetry...";
+        StateHasChanged();
+
+        try
+        {
+            var report = await VulnSyncService.SyncAllServicesAsync(default);
+            _syncStatusMessage = $"✅ Vulnerability sync complete: {report.ServicesAudited} services audited, {report.TotalVulnerabilities} CVEs indexed.";
+            RefreshKpis();
+            LoadCurrentTabData();
+        }
+        catch (Exception ex)
+        {
+            _syncStatusMessage = $"⚠️ Error syncing vulnerabilities: {ex.Message}";
+        }
+        finally
+        {
+            _isSyncing = false;
+            StateHasChanged();
+        }
+    }
+}

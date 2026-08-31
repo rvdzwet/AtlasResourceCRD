@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Atlas.Core/Atlas.Core.csproj" />
+    <Project Path="src/Atlas.Scanner.Cli/Atlas.Scanner.Cli.csproj" />
+    <Project Path="src/Atlas.Server/Atlas.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Atlas.Core.Tests/Atlas.Core.Tests.csproj" />
+  </Folder>
+</Solution>

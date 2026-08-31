@@ -1,0 +1,140 @@
+@inherits LayoutComponentBase
+@inject Neo4jGraphService GraphService
+@inject SpecDocumentRepository SpecRepo
+@inject IJSRuntime JS
+
+<div class="app-shell" data-theme="@_currentTheme">
+    <!-- Left Persistent Sidebar -->
+    <aside class="app-sidebar">
+        <div>
+            <!-- Brand Logo -->
+            <a href="/" class="sidebar-logo">
+                <div class="sidebar-logo-icon">H</div>
+                <span>Atlas</span>
+            </a>
+
+            <!-- Navigation Links with Icons -->
+            <ul class="sidebar-nav">
+                <li>
+                    <NavLink class="sidebar-link" href="catalog">
+                        <span class="sidebar-link-icon">👥</span>
+                        <span>Services</span>
+                    </NavLink>
+                </li>
+                <li>
+                    <NavLink class="sidebar-link" href="" Match="NavLinkMatch.All">
+                        <span class="sidebar-link-icon">📊</span>
+                        <span>Architecture Studio</span>
+                    </NavLink>
+                </li>
+                <li>
+                    <NavLink class="sidebar-link" href="security">
+                        <span class="sidebar-link-icon">🛡️</span>
+                        <span>Security</span>
+                    </NavLink>
+                </li>
+                <li>
+                    <NavLink class="sidebar-link" href="blast-radius">
+                        <span class="sidebar-link-icon">📍</span>
+                        <span>Risk & Blast Radius</span>
+                    </NavLink>
+                </li>
+                <li>
+                    <NavLink class="sidebar-link" href="living-docs">
+                        <span class="sidebar-link-icon">🏛️</span>
+                        <span>Living Specs</span>
+                    </NavLink>
+                </li>
+                <li>
+                    <NavLink class="sidebar-link" href="sbom">
+                        <span class="sidebar-link-icon">📦</span>
+                        <span>Supply Chain (SBOM)</span>
+                    </NavLink>
+                </li>
+                <li>
+                    <NavLink class="sidebar-link" href="quality">
+                        <span class="sidebar-link-icon">⭐</span>
+                        <span>Quality Scorecard</span>
+                    </NavLink>
+                </li>
+            </ul>
+        </div>
+
+        <div style="font-size: 0.78rem; color: var(--text-muted); text-align: center; padding: 0.5rem 0;">
+            <span>Atlas Enterprise v1.8</span>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="app-main">
+        <!-- Top Header Bar -->
+        <header class="app-topbar">
+            <!-- Search Bar -->
+            <div class="topbar-search-wrap">
+                <span class="topbar-search-icon">🔍</span>
+                <input type="text" class="topbar-search-input" placeholder="Search enterprise architecture, services, APIs..." />
+            </div>
+
+            <!-- Top Right Controls -->
+            <div class="topbar-actions">
+                @if (GraphService.IsConnected)
+                {
+                    <span class="badge-clean-green">
+                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2ED573;"></span>
+                        Neo4j Online
+                    </span>
+                }
+                else
+                {
+                    <span class="badge-clean-gold">
+                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FFA502;"></span>
+                        Memory Mode
+                    </span>
+                }
+
+                <!-- Dark / Light Theme Toggle -->
+                <button class="saas-filter-pill" style="font-size: 0.85rem; padding: 0.35rem 0.75rem; border: 1px solid var(--border-card);" @onclick="ToggleTheme" title="Toggle Dark/Light Mode">
+                    @(_currentTheme == "dark" ? "☀️ Light" : "🌙 Dark")
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Page Content Body -->
+        <main class="app-content">
+            @Body
+        </main>
+    </div>
+</div>
+
+@code {
+    private string _currentTheme = "light";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var savedTheme = await JS.InvokeAsync<string?>("localStorage.getItem", "atlas-theme");
+                if (!string.IsNullOrWhiteSpace(savedTheme))
+                {
+                    _currentTheme = savedTheme;
+                    await JS.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme', '{_currentTheme}')");
+                    StateHasChanged();
+                }
+            }
+            catch { }
+        }
+    }
+
+    private async Task ToggleTheme()
+    {
+        _currentTheme = _currentTheme == "dark" ? "light" : "dark";
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", "atlas-theme", _currentTheme);
+            await JS.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme', '{_currentTheme}')");
+        }
+        catch { }
+    }
+}

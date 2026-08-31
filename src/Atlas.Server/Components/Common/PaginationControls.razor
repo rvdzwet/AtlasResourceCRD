@@ -1,0 +1,82 @@
+@namespace Atlas.Server.Components.Common
+
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.25rem; border-top: 1px solid var(--border-card); flex-wrap: wrap; gap: 0.75rem; background: var(--bg-subtle);">
+    <div style="font-size: 0.82rem; color: var(--text-secondary);">
+        Showing @(((CurrentPage - 1) * PageSize) + (TotalItems > 0 ? 1 : 0)) - @(Math.Min(CurrentPage * PageSize, TotalItems)) of <strong>@TotalItems.ToString("N0")</strong> items
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 0.35rem; margin-right: 0.5rem;">
+            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Per Page:</span>
+            <select class="saas-input" style="padding: 0.2rem 0.5rem; font-size: 0.8rem; width: 75px; height: 30px;"
+                    value="@PageSize" @onchange="OnSizeChange">
+                <option value="15">15</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+            </select>
+        </div>
+
+        <button class="saas-filter-pill" style="font-size: 0.78rem; padding: 0.25rem 0.55rem;"
+                disabled="@(CurrentPage <= 1)" @onclick="() => OnPageChange(1)" title="First Page">
+            ⏮
+        </button>
+
+        <button class="saas-filter-pill" style="font-size: 0.78rem; padding: 0.25rem 0.6rem;"
+                disabled="@(CurrentPage <= 1)" @onclick="() => OnPageChange(CurrentPage - 1)" title="Previous Page">
+            ◀ Prev
+        </button>
+
+        <span style="font-size: 0.84rem; font-weight: 700; padding: 0 0.4rem; color: var(--text-main);">
+            @CurrentPage / @Math.Max(1, TotalPages)
+        </span>
+
+        <button class="saas-filter-pill" style="font-size: 0.78rem; padding: 0.25rem 0.6rem;"
+                disabled="@(CurrentPage >= TotalPages)" @onclick="() => OnPageChange(CurrentPage + 1)" title="Next Page">
+            Next ▶
+        </button>
+
+        <button class="saas-filter-pill" style="font-size: 0.78rem; padding: 0.25rem 0.55rem;"
+                disabled="@(CurrentPage >= TotalPages)" @onclick="() => OnPageChange(TotalPages)" title="Last Page">
+            ⏭
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int CurrentPage { get; set; } = 1;
+
+    [Parameter]
+    public int TotalPages { get; set; } = 1;
+
+    [Parameter]
+    public int TotalItems { get; set; } = 0;
+
+    [Parameter]
+    public int PageSize { get; set; } = 25;
+
+    [Parameter]
+    public EventCallback<int> CurrentPageChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<int> PageSizeChanged { get; set; }
+
+    private async Task OnPageChange(int page)
+    {
+        var target = Math.Max(1, Math.Min(TotalPages, page));
+        if (target != CurrentPage)
+        {
+            await CurrentPageChanged.InvokeAsync(target);
+        }
+    }
+
+    private async Task OnSizeChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var sz))
+        {
+            await PageSizeChanged.InvokeAsync(sz);
+        }
+    }
+}

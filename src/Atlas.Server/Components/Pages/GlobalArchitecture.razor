@@ -1,0 +1,1704 @@
+@page "/"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@inject Neo4jGraphMapper GraphMapper
+@inject SpecDocumentRepository SpecRepo
+@inject Neo4jGraphService GraphService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Enterprise Architecture Studio & Dependency Hub - Atlas</PageTitle>
+
+<!-- Top 4 KPI Stat Cards -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-purple"><span>📦</span></div>
+            <div>
+                <div class="kpi-value">@TotalServicesCount</div>
+                <div class="kpi-label">Total Microservices</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-cyan"><span>🛡️</span></div>
+            <div>
+                <div class="kpi-value">@TotalThreatsCount</div>
+                <div class="kpi-label">STRIDE Threats</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-gold"><span>⭐</span></div>
+            <div>
+                <div class="kpi-value">
+                    @if (TotalServicesCount > 0)
+                    {
+                        @($"{AvgMaintainabilityStars:0.0}") <span style="font-size: 1rem; color: #FFA502;">★</span>
+                    }
+                    else
+                    {
+                        <span>0.0 <span style="font-size: 1rem; color: #CBD5E1;">★</span></span>
+                    }
+                </div>
+                <div class="kpi-label">Avg Quality Rating</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-left">
+            <div class="kpi-icon-box icon-box-coral"><span>☁️</span></div>
+            <div>
+                <div class="kpi-value">@TotalExternalApis</div>
+                <div class="kpi-label">External APIs</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Architecture Studio Card -->
+<div class="saas-card" style="margin-bottom: 1.5rem; position: relative;">
+    <div class="saas-card-header" style="flex-wrap: wrap; gap: 0.75rem;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                <h2 class="saas-card-title">Enterprise Architecture Studio</h2>
+                <span class="badge-clean-purple" style="font-size: 0.75rem;">C4 Interactive</span>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.15rem;">
+                360° application dependency mapping, domain macro views, and Draft & Export Workbench
+            </div>
+        </div>
+
+        <!-- Perspective Selector Tabs -->
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <div style="background: var(--bg-subtle); border-radius: var(--radius-pill); padding: 0.2rem; display: flex; gap: 0.2rem;">
+                <button class="saas-filter-pill @(_activePerspective == "studio" ? "active" : "")" @onclick='() => SetPerspective("studio")'>
+                    🏛️ Topology Canvas
+                </button>
+                <button class="saas-filter-pill @(_activePerspective == "dependencies" ? "active" : "")" @onclick='() => SetPerspective("dependencies")'>
+                    🕸️ Dependency Matrix
+                </button>
+                <button class="saas-filter-pill @(_activePerspective == "capabilities" ? "active" : "")" @onclick='() => SetPerspective("capabilities")'>
+                    🎯 Capabilities
+                </button>
+                <button class="saas-filter-pill @(_activePerspective == "lineage" ? "active" : "")" @onclick='() => SetPerspective("lineage")'>
+                    🔀 Data Lineage
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Studio Architecture Navigation Bar -->
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; background: var(--bg-card); border-radius: 10px; padding: 0.6rem 1rem; margin-bottom: 0.85rem; border: 1px solid var(--border-card); box-shadow: 0 2px 8px rgba(0,0,0,0.02);">
+        <!-- Mode Switcher -->
+        <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+            <span style="font-weight: 700; color: var(--text-secondary); font-size: 0.82rem;">View Mode:</span>
+            <button class="saas-filter-pill @(_studioMode == "focal" ? "active" : "")" style="font-size: 0.8rem; padding: 0.25rem 0.65rem; font-weight: 700;" @onclick='() => SetStudioMode("focal")'>
+                🎯 360° Focal Explorer
+            </button>
+            <button class="saas-filter-pill @(_studioMode == "workbench" ? "active" : "")" style="font-size: 0.8rem; padding: 0.25rem 0.65rem; font-weight: 700;" @onclick='() => SetStudioMode("workbench")'>
+                🛠️ Draft & Export Workbench
+            </button>
+            <button class="saas-filter-pill @(_studioMode == "domain" ? "active" : "")" style="font-size: 0.8rem; padding: 0.25rem 0.65rem; font-weight: 700;" @onclick='() => SetStudioMode("domain")'>
+                🏛️ Domain Macro View
+            </button>
+            <button class="saas-filter-pill @(_studioMode == "global" ? "active" : "")" style="font-size: 0.8rem; padding: 0.25rem 0.65rem; font-weight: 700;" @onclick='() => SetStudioMode("global")'>
+                🌐 Full Topology Map
+            </button>
+        </div>
+
+        <!-- Mode-Specific Controls -->
+        @if (_studioMode == "focal")
+        {
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <span style="font-weight: 700; color: var(--text-secondary); font-size: 0.82rem;">Focal Service:</span>
+                <ServiceSearchSelect SelectedService="@_focalServiceName"
+                                     SelectedServiceChanged="OnFocalServiceSelectedAsync"
+                                     Placeholder="Choose focal service..."
+                                     MaxWidth="280px" />
+            </div>
+        }
+        else if (_studioMode == "workbench")
+        {
+            <!-- Workbench Action Toolbar -->
+            <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                <ServiceSearchSelect SelectedService="@_workbenchSelectedService"
+                                     SelectedServiceChanged="OnWorkbenchAddServiceSelectedAsync"
+                                     Placeholder="➕ Add service to canvas..."
+                                     MaxWidth="250px" />
+
+                @if (_selectedNode != null && _selectedNode.Type == "Service")
+                {
+                    <button class="saas-filter-pill" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" @onclick="WorkbenchExpandCallers" title="Expand upstream callers into canvas">
+                        ⬅️ Callers
+                    </button>
+                    <button class="saas-filter-pill" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" @onclick="WorkbenchExpandDependencies" title="Expand downstream dependencies into canvas">
+                        ➡️ Deps
+                    </button>
+                    <button class="saas-filter-pill" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; color: #DC2626;" @onclick="WorkbenchRemoveSelectedNode" title="Remove selected node from canvas">
+                        🗑️ Remove
+                    </button>
+                }
+
+                <button class="saas-filter-pill" style="font-size: 0.75rem; padding: 0.2rem 0.55rem; background: var(--primary-purple-light); color: var(--primary-purple); font-weight: 700;" @onclick="ExportMermaidModal">
+                    📋 Mermaid C4
+                </button>
+                <button class="saas-filter-pill" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" @onclick="WorkbenchClearCanvas">
+                    🔄 Clear
+                </button>
+            </div>
+        }
+        else if (_studioMode == "global")
+        {
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <span style="font-weight: 700; color: var(--text-secondary); font-size: 0.8rem;">C4 Scope:</span>
+                <button class="saas-filter-pill @(_activeC4Scope == "landscape" ? "active" : "")" style="font-size: 0.75rem; padding: 0.15rem 0.5rem;" @onclick='() => SetC4Scope("landscape")'>
+                    L1 Landscape
+                </button>
+                <button class="saas-filter-pill @(_activeC4Scope == "containers" ? "active" : "")" style="font-size: 0.75rem; padding: 0.15rem 0.5rem;" @onclick='() => SetC4Scope("containers")'>
+                    L2 Containers
+                </button>
+                <button class="saas-filter-pill @(_activeC4Scope == "deep" ? "active" : "")" style="font-size: 0.75rem; padding: 0.15rem 0.5rem;" @onclick='() => SetC4Scope("deep")'>
+                    L3 Deep
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (_activePerspective == "studio")
+    {
+        <!-- Interactive Studio Controls Toolbar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem;">
+            <!-- Left: Layout Selector & Analytical Lens -->
+            <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 0.3rem;">
+                    <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-secondary);">Layout:</span>
+                    <select class="form-select-sm" style="font-size: 0.8rem; padding: 0.2rem 0.5rem; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-card); color: var(--text-main);" @onchange="OnLayoutChanged">
+                        @if (_studioMode == "focal" || _studioMode == "workbench")
+                        {
+                            <option value="focal-flow" selected="@(_activeLayout == "focal-flow")">➡️ 3-Column Flow</option>
+                            <option value="cose" selected="@(_activeLayout == "cose")">🪐 Force-Directed Physics</option>
+                            <option value="concentric" selected="@(_activeLayout == "concentric")">🎯 Concentric Orbit</option>
+                            <option value="dagre-tb" selected="@(_activeLayout == "dagre-tb")">🌳 Top-Down</option>
+                        }
+                        else
+                        {
+                            <option value="cose" selected="@(_activeLayout == "cose")">🪐 Force-Directed Physics</option>
+                            <option value="concentric" selected="@(_activeLayout == "concentric")">🎯 Concentric Rings</option>
+                            <option value="dagre-tb" selected="@(_activeLayout == "dagre-tb")">🌳 Hierarchical (Top-Down)</option>
+                            <option value="dagre-lr" selected="@(_activeLayout == "dagre-lr")">➡️ Hierarchical (Left-Right)</option>
+                        }
+                    </select>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 0.3rem;">
+                    <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-secondary);">Lens:</span>
+                    <select class="form-select-sm" style="font-size: 0.8rem; padding: 0.2rem 0.5rem; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-card); color: var(--text-main);" @onchange="OnLensChanged">
+                        <option value="default" selected="@(_activeLens == "default")">🎨 Architecture & Tiers</option>
+                        <option value="threats" selected="@(_activeLens == "threats")">🛡️ STRIDE Threats Heatmap</option>
+                        <option value="quality" selected="@(_activeLens == "quality")">⭐ SIG Quality Stars</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Middle: Search Input -->
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <input type="text" placeholder="🔍 Search nodes in canvas..." value="@_searchQuery" @oninput="OnSearchInput"
+                       style="font-size: 0.8rem; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-card); color: var(--text-main); width: 220px;" />
+            </div>
+
+            <!-- Right: Action Buttons -->
+            <div style="display: flex; align-items: center; gap: 0.35rem;">
+                <button class="saas-filter-pill" title="Zoom In" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;" @onclick="ZoomIn">➕</button>
+                <button class="saas-filter-pill" title="Zoom Out" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;" @onclick="ZoomOut">➖</button>
+                <button class="saas-filter-pill" title="Fit to Screen" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;" @onclick="ZoomToFit">⊡ Fit</button>
+                <button class="saas-filter-pill" title="Toggle Fullscreen" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;" @onclick="ToggleFullscreen">⛶ Fullscreen</button>
+                <button class="saas-filter-pill" title="Export High-Res PNG" style="font-size: 0.78rem; padding: 0.25rem 0.6rem; background: var(--primary-purple-light); color: var(--primary-purple); font-weight: 700;" @onclick="ExportPng">
+                    📥 PNG
+                </button>
+            </div>
+        </div>
+
+        <!-- Interactive Drilldown Breadcrumb Trail -->
+        <div style="display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.85rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-card); margin-bottom: 0.75rem; font-size: 0.82rem; flex-wrap: wrap;">
+            <button class="saas-filter-pill @(_studioMode == "domain" ? "active" : "")" style="padding: 0.15rem 0.5rem; font-size: 0.76rem;" @onclick='() => SetStudioMode("domain")'>
+                🌐 Enterprise Fleet
+            </button>
+
+            @if (!string.IsNullOrWhiteSpace(_activeDomainFilter))
+            {
+                <span style="color: var(--text-muted); font-size: 0.75rem;">/</span>
+                <span class="badge-clean-purple" style="font-size: 0.76rem;">
+                    🏛️ @_activeDomainFilter
+                </span>
+            }
+
+            @if (_studioMode == "focal" && !string.IsNullOrWhiteSpace(_focalServiceName))
+            {
+                <span style="color: var(--text-muted); font-size: 0.75rem;">/</span>
+                <button class="saas-filter-pill active" style="padding: 0.15rem 0.55rem; font-size: 0.76rem;" @onclick='() => PivotToFocal(_focalServiceName)'>
+                    📦 @_focalServiceName
+                </button>
+            }
+
+            @if (_selectedNode != null && _selectedNode.Name != _focalServiceName)
+            {
+                <span style="color: var(--text-muted); font-size: 0.75rem;">/</span>
+                <span class="badge-clean-gold" style="font-size: 0.76rem;">
+                    🔍 Selected: @_selectedNode.Name (@_selectedNode.Type)
+                </span>
+            }
+        </div>
+
+        <!-- Canvas Container + Slide-over Drawer Grid -->
+        <div id="studio-canvas-wrapper" style="position: relative; width: 100%; height: 740px; background: var(--bg-app); border-radius: 12px; border: 1px solid var(--border-card); overflow: hidden; display: flex; box-shadow: 0 4px 20px rgba(0,0,0,0.03);">
+            <!-- Cytoscape Canvas -->
+            <div id="architecture-studio-canvas" style="flex: 1; height: 100%;"></div>
+
+            <!-- Slide-Over Deep Interactive Drilldown Inspector Drawer -->
+            @if (_selectedNode != null)
+            {
+                <div style="width: 420px; height: 100%; background: var(--bg-card); border-left: 1px solid var(--border-card); box-shadow: -4px 0 20px rgba(0,0,0,0.08); display: flex; flex-direction: column; z-index: 1000; overflow-y: auto;">
+                    
+                    <!-- Drawer Header -->
+                    <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: flex-start; background: var(--bg-subtle);">
+                        <div style="flex: 1; min-width: 0; padding-right: 0.5rem;">
+                            <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                <span class="badge-clean-purple" style="font-size: 0.72rem;">@_selectedNode.Type</span>
+                                <span class="badge-clean-gold" style="font-size: 0.72rem;">@_selectedNode.Tier</span>
+                                @if (_selectedNode.QualityStars > 0)
+                                {
+                                    <span class="badge-clean-green" style="font-size: 0.72rem;">⭐ @_selectedNode.QualityStars.ToString("0.0")</span>
+                                }
+                            </div>
+                            <h3 style="font-size: 1.18rem; color: var(--primary-purple); margin-top: 0.35rem; font-weight: 800; word-break: break-all; line-height: 1.25;">
+                                @_selectedNode.Name
+                            </h3>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.2rem;">
+                                🏛️ @_selectedNode.Domain
+                            </div>
+                        </div>
+                        <button class="saas-filter-pill" style="font-size: 0.85rem; padding: 0.25rem 0.6rem;" @onclick="CloseInspector">✕</button>
+                    </div>
+
+                    <!-- Quick Drilldown Action Bar -->
+                    <div style="padding: 0.85rem 1.25rem; border-bottom: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 0.45rem; background: var(--bg-card);">
+                        @if (_selectedNode.Type == "Service")
+                        {
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem;">
+                                @if (!string.Equals(_focalServiceName, _selectedNode.Name, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <button class="saas-filter-pill active" style="font-size: 0.78rem; padding: 0.35rem 0.5rem; text-align: center;" @onclick='() => PivotToFocal(_selectedNode.Name)'>
+                                        🎯 Focus in 360° Studio
+                                    </button>
+                                }
+                                <a href="/catalog/@_selectedNode.Name" class="saas-filter-pill" style="font-size: 0.78rem; padding: 0.35rem 0.5rem; text-align: center; text-decoration: none;">
+                                    📋 Full Blueprint ➔
+                                </a>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem;">
+                                <a href="/living-docs" class="saas-filter-pill" style="font-size: 0.75rem; padding: 0.25rem 0.4rem; text-align: center; text-decoration: none;">
+                                    📖 Living Specs
+                                </a>
+                                <button class="saas-filter-pill" style="font-size: 0.75rem; padding: 0.25rem 0.4rem; background: #FEF2F2; color: #DC2626; font-weight: 700;" @onclick="() => SimulateOutage(_selectedNode.Id)">
+                                    💥 Blast Radius
+                                </button>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Drawer Tabs (For Microservices) -->
+                    @if (_selectedNode.Type == "Service")
+                    {
+                        <div style="display: flex; gap: 0.2rem; border-bottom: 1px solid var(--border-subtle); padding: 0.4rem 0.8rem; background: var(--bg-subtle); overflow-x: auto;">
+                            <button class="saas-filter-pill @(_drawerTab == "overview" ? "active" : "")" style="font-size: 0.72rem; padding: 0.2rem 0.45rem;" @onclick='() => _drawerTab = "overview"'>
+                                📊 Overview
+                            </button>
+                            <button class="saas-filter-pill @(_drawerTab == "deps" ? "active" : "")" style="font-size: 0.72rem; padding: 0.2rem 0.45rem;" @onclick='() => _drawerTab = "deps"'>
+                                🕸️ Deps (@(_selectedNode.InboundCallers.Count + _selectedNode.OutboundDependencies.Count))
+                            </button>
+                            <button class="saas-filter-pill @(_drawerTab == "threats" ? "active" : "")" style="font-size: 0.72rem; padding: 0.2rem 0.45rem;" @onclick='() => _drawerTab = "threats"'>
+                                🛡️ Threats (@_selectedNode.Threats.Count)
+                            </button>
+                            <button class="saas-filter-pill @(_drawerTab == "apis" ? "active" : "")" style="font-size: 0.72rem; padding: 0.2rem 0.45rem;" @onclick='() => _drawerTab = "apis"'>
+                                ⚡ APIs (@_selectedNode.Endpoints.Count)
+                            </button>
+                            <button class="saas-filter-pill @(_drawerTab == "datastores" ? "active" : "")" style="font-size: 0.72rem; padding: 0.2rem 0.45rem;" @onclick='() => _drawerTab = "datastores"'>
+                                🗄️ Stores (@_selectedNode.Datastores.Count)
+                            </button>
+                            <button class="saas-filter-pill @(_drawerTab == "sbom" ? "active" : "")" style="font-size: 0.72rem; padding: 0.2rem 0.45rem;" @onclick='() => _drawerTab = "sbom"'>
+                                📦 SBOM (@_selectedNode.KeyPackages.Count)
+                            </button>
+                        </div>
+
+                        <!-- Tab 1: Service Overview -->
+                        @if (_drawerTab == "overview")
+                        {
+                            <div style="padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                                @if (!string.IsNullOrWhiteSpace(_selectedNode.Description))
+                                {
+                                    <div>
+                                        <strong style="font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase;">Description:</strong>
+                                        <p style="font-size: 0.88rem; color: var(--text-main); margin-top: 0.25rem; line-height: 1.45;">
+                                            @_selectedNode.Description
+                                        </p>
+                                    </div>
+                                }
+
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; background: var(--bg-subtle); padding: 0.85rem; border-radius: 8px;">
+                                    <div>
+                                        <div style="font-size: 0.72rem; color: var(--text-muted);">PRIMARY LANGUAGE</div>
+                                        <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">@_selectedNode.PrimaryLanguage</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 0.72rem; color: var(--text-muted);">OWNER GUILD</div>
+                                        <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">@_selectedNode.Owner</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 0.72rem; color: var(--text-muted);">LIFECYCLE STATE</div>
+                                        <div style="font-size: 0.85rem; font-weight: 700; color: #15803D;">@_selectedNode.Lifecycle</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 0.72rem; color: var(--text-muted);">PRODUCTION READINESS</div>
+                                        <div style="font-size: 0.85rem; font-weight: 700; color: var(--primary-purple);">@_selectedNode.ProductionReadiness</div>
+                                    </div>
+                                </div>
+
+                                @if (_selectedNode.Frameworks != null && _selectedNode.Frameworks.Count > 0)
+                                {
+                                    <div>
+                                        <strong style="font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase;">Tech Stack Frameworks:</strong>
+                                        <div style="display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.35rem;">
+                                            @foreach (var fw in _selectedNode.Frameworks)
+                                            {
+                                                <span class="badge-clean-purple" style="font-size: 0.75rem;">@fw</span>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        <!-- Tab 2: Dependencies (Callers & Deps) -->
+                        @if (_drawerTab == "deps")
+                        {
+                            <div style="padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1.25rem;">
+                                <!-- Upstream Inbound Callers -->
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <strong style="font-size: 0.82rem; color: var(--text-main);">⬆️ Upstream Callers (@_selectedNode.InboundCallers.Count)</strong>
+                                        <span style="font-size: 0.72rem; color: var(--text-muted);">Services calling this node</span>
+                                    </div>
+
+                                    @if (_selectedNode.InboundCallers.Count == 0)
+                                    {
+                                        <div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem; background: var(--bg-subtle); border-radius: 6px;">
+                                            No direct upstream microservice callers discovered.
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                                            @foreach (var caller in _selectedNode.InboundCallers)
+                                            {
+                                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.65rem; background: var(--bg-subtle); border-radius: 6px; border: 1px solid var(--border-card);">
+                                                    <div>
+                                                        <div style="font-weight: 700; font-size: 0.84rem; color: var(--primary-purple);">@caller.ServiceName</div>
+                                                        <div style="font-size: 0.72rem; color: var(--text-muted);">@caller.Tier • @caller.RoleOrProtocol</div>
+                                                    </div>
+                                                    <button class="saas-filter-pill" style="font-size: 0.72rem; padding: 0.15rem 0.45rem;" @onclick='() => PivotToFocal(caller.ServiceName)'>
+                                                        🎯 Focus
+                                                    </button>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+
+                                <!-- Downstream Dependencies -->
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <strong style="font-size: 0.82rem; color: var(--text-main);">⬇️ Downstream Dependencies (@_selectedNode.OutboundDependencies.Count)</strong>
+                                        <span style="font-size: 0.72rem; color: var(--text-muted);">Services called by this node</span>
+                                    </div>
+
+                                    @if (_selectedNode.OutboundDependencies.Count == 0)
+                                    {
+                                        <div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem; background: var(--bg-subtle); border-radius: 6px;">
+                                            No downstream internal microservices called.
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                                            @foreach (var dep in _selectedNode.OutboundDependencies)
+                                            {
+                                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.65rem; background: var(--bg-subtle); border-radius: 6px; border: 1px solid var(--border-card);">
+                                                    <div>
+                                                        <div style="font-weight: 700; font-size: 0.84rem; color: var(--primary-purple);">@dep.ServiceName</div>
+                                                        <div style="font-size: 0.72rem; color: var(--text-muted);">@dep.Tier • @dep.RoleOrProtocol</div>
+                                                    </div>
+                                                    <button class="saas-filter-pill" style="font-size: 0.72rem; padding: 0.15rem 0.45rem;" @onclick='() => PivotToFocal(dep.ServiceName)'>
+                                                        🎯 Focus
+                                                    </button>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Tab 3: STRIDE Threats -->
+                        @if (_drawerTab == "threats")
+                        {
+                            <div style="padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                                @if (_selectedNode.Threats.Count == 0)
+                                {
+                                    <div style="color: #15803D; font-size: 0.85rem; padding: 1.5rem; text-align: center; background: #DCFCE7; border-radius: 8px;">
+                                        🟢 No critical security threats identified. Clean posture.
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var t in _selectedNode.Threats)
+                                    {
+                                        var sev = t.Severity ?? "Medium";
+                                        var isHigh = string.Equals(sev, "Critical", StringComparison.OrdinalIgnoreCase) || string.Equals(sev, "High", StringComparison.OrdinalIgnoreCase);
+                                        <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.85rem;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                                                <span class="badge-clean-purple" style="font-size: 0.72rem;">@t.StrideCategory</span>
+                                                <span class="@(isHigh ? "badge-clean-coral" : "badge-clean-gold")" style="font-size: 0.72rem;">@sev</span>
+                                            </div>
+                                            <div style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">@t.ThreatScenario</div>
+                                            @if (!string.IsNullOrWhiteSpace(t.MitigationControl))
+                                            {
+                                                <div style="font-size: 0.78rem; color: #15803D; margin-top: 0.35rem;">
+                                                    <strong>Mitigation:</strong> @t.MitigationControl
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+
+                        <!-- Tab 4: API Contracts -->
+                        @if (_drawerTab == "apis")
+                        {
+                            <div style="padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                                @if (_selectedNode.Endpoints.Count == 0)
+                                {
+                                    <div style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem; text-align: center;">
+                                        No explicit API routes declared.
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var ep in _selectedNode.Endpoints)
+                                    {
+                                        <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 6px; padding: 0.65rem 0.85rem;">
+                                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                                <span class="badge-clean-purple" style="font-size: 0.72rem; font-weight: 800;">@ep.Method</span>
+                                                <code style="font-size: 0.82rem; color: var(--text-main);">@ep.Path</code>
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(ep.Description))
+                                            {
+                                                <div style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                                    @ep.Description
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+
+                        <!-- Tab 5: Datastores -->
+                        @if (_drawerTab == "datastores")
+                        {
+                            <div style="padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                                @if (_selectedNode.Datastores.Count == 0)
+                                {
+                                    <div style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem; text-align: center;">
+                                        No dedicated datastores bound.
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var ds in _selectedNode.Datastores)
+                                    {
+                                        <div style="background: var(--bg-subtle); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.75rem 0.85rem;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                <strong style="font-size: 0.85rem; color: var(--primary-purple);">🗄️ @ds.Name</strong>
+                                                <span class="badge-clean-gold" style="font-size: 0.72rem;">@ds.Type</span>
+                                            </div>
+                                            <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                                Persistence Role: @(ds.Role ?? "PERSISTS")
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+
+                        <!-- Tab 6: SBOM Packages -->
+                        @if (_drawerTab == "sbom")
+                        {
+                            <div style="padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                                @if (_selectedNode.KeyPackages.Count == 0)
+                                {
+                                    <div style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem; text-align: center;">
+                                        No SBOM package dependencies listed.
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var pkg in _selectedNode.KeyPackages.Take(25))
+                                    {
+                                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.65rem; background: var(--bg-subtle); border-radius: 6px; border: 1px solid var(--border-card);">
+                                            <div style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">@pkg.Name</div>
+                                            <code style="font-size: 0.75rem; color: var(--text-muted);">@pkg.Version</code>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <!-- NON-SERVICE NODE INSPECTOR (Databases, External APIs, Events, Domains) -->
+                        <div style="padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                            <div style="background: var(--bg-subtle); padding: 0.85rem; border-radius: 8px; border: 1px solid var(--border-card);">
+                                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Infrastructure Node Details</div>
+                                <div style="font-size: 0.9rem; font-weight: 700; color: var(--text-main); margin-top: 0.25rem;">
+                                    @_selectedNode.Subtitle
+                                </div>
+                            </div>
+
+                            <!-- Connected Fleet Microservices -->
+                            <div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <strong style="font-size: 0.85rem; color: var(--text-main);">
+                                        🔗 Connected Microservices (@_selectedNode.ConnectedServices.Count)
+                                    </strong>
+                                </div>
+
+                                @if (_selectedNode.ConnectedServices.Count == 0)
+                                {
+                                    <div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.85rem; background: var(--bg-subtle); border-radius: 6px;">
+                                        No linked microservices discovered.
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div style="display: flex; flex-direction: column; gap: 0.45rem;">
+                                        @foreach (var svc in _selectedNode.ConnectedServices)
+                                        {
+                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: var(--bg-subtle); border-radius: 6px; border: 1px solid var(--border-card);">
+                                                <div>
+                                                    <div style="font-weight: 700; font-size: 0.85rem; color: var(--primary-purple);">@svc.ServiceName</div>
+                                                    <div style="font-size: 0.74rem; color: var(--text-muted);">@svc.Domain • @svc.RoleOrProtocol</div>
+                                                </div>
+                                                <button class="saas-filter-pill" style="font-size: 0.72rem; padding: 0.2rem 0.5rem;" @onclick='() => PivotToFocal(svc.ServiceName)'>
+                                                    🎯 Focus
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else if (_activePerspective == "dependencies")
+    {
+        <!-- Dependency Matrix Table -->
+        <div style="padding: 1.5rem 0;">
+            <table class="saas-table" style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Source Microservice</th>
+                        <th>Domain Context</th>
+                        <th>Internal Dependencies</th>
+                        <th>Datastores & Caches</th>
+                        <th>External APIs</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_topologyData.Items.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                                No services found in topology catalog.
+                            </td>
+                        </tr>
+                    }
+                    @foreach (var s in _topologyData.Items)
+                    {
+                        <tr>
+                            <td style="font-weight: 700; color: var(--primary-purple);">@s.Name</td>
+                            <td>🏛️ @s.Domain</td>
+                            <td><span class="badge-clean-purple">@s.EndpointsCount Endpoints</span></td>
+                            <td><span class="badge-clean-gold">🗄️ @s.DatabasesCount Datastores</span></td>
+                            <td><span class="badge-clean-green">☁️ @s.ExternalApisCount Cloud APIs</span></td>
+                            <td>
+                                <button class="saas-filter-pill" style="font-size: 0.78rem; padding: 0.2rem 0.5rem;" @onclick='() => PivotToFocal(s.Name)'>
+                                    🎯 Focus in Canvas
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <PaginationControls
+                CurrentPage="@_topologyData.Page"
+                TotalPages="@_topologyData.TotalPages"
+                TotalItems="@_topologyData.TotalItems"
+                PageSize="@_topologyData.PageSize"
+                CurrentPageChanged="SetTopologyPage"
+                PageSizeChanged="OnTopologyPageSizeChanged" />
+        </div>
+    }
+</div>
+
+<!-- Mermaid C4 Export Dialog Modal -->
+@if (_showMermaidModal)
+{
+    <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 2000;">
+        <div class="saas-card" style="width: 750px; max-width: 90vw; max-height: 85vh; display: flex; flex-direction: column; gap: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="color: var(--primary-purple); font-weight: 700;">📋 Mermaid C4 Architecture Export</h3>
+                <button class="saas-filter-pill" @onclick='() => _showMermaidModal = false'>✕ Close</button>
+            </div>
+            <p style="font-size: 0.88rem; color: var(--text-secondary);">
+                Copy this Mermaid C4 block directly into your Markdown docs, GitHub Pull Requests, or Architecture Decision Records (ADRs).
+            </p>
+            <textarea readonly style="flex: 1; min-height: 320px; font-family: var(--font-mono); font-size: 0.82rem; padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-card); background: var(--bg-subtle); color: var(--text-main);">@_mermaidC4Text</textarea>
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                <button class="sidebar-action-btn" style="margin: 0; padding: 0.45rem 1rem;" @onclick="CopyMermaidToClipboard">
+                    @(_copiedMermaid ? "✅ Copied!" : "📋 Copy to Clipboard")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _activePerspective = "studio";
+    private string _studioMode = "focal"; // focal, workbench, domain, global
+    private string _focalServiceName = "";
+    private string _activeC4Scope = "containers";
+    private string _activeLayout = "focal-flow";
+    private string _activeLens = "default";
+    private string _searchQuery = "";
+    private string _drawerTab = "overview";
+    private string _activeDomainFilter = "";
+    private bool _showMermaidModal = false;
+    private string _mermaidC4Text = "";
+    private bool _copiedMermaid = false;
+
+    private readonly List<object> _workbenchElements = new();
+    private readonly HashSet<string> _workbenchNodeIds = new(StringComparer.OrdinalIgnoreCase);
+
+    private SelectedNodeDto? _selectedNode;
+    private AtlasResource? _selectedResource;
+    private string _workbenchSelectedService = string.Empty;
+
+    private int _topologyPage = 1;
+    private int _topologyPageSize = 25;
+    private PagedResult<ServiceSummaryRecord> _topologyData = new();
+
+    private DotNetObjectReference<GlobalArchitecture>? _dotNetRef;
+
+    private int TotalServicesCount => SpecRepo.TotalServicesCount;
+    private int TotalThreatsCount => SpecRepo.GetAllSummaries().Sum(s => s.ThreatCount);
+    private double AvgMaintainabilityStars => SpecRepo.TotalServicesCount > 0 ? SpecRepo.GetAllSummaries().Average(s => s.SigStars) : 5.0;
+    private int TotalExternalApis => SpecRepo.GetAllSummaries().Sum(s => s.ExternalApisCount);
+
+    public class SelectedNodeDto
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Type { get; set; } = "Service"; // Service, Database, ExternalApi, EventTopic, PackageBundle, DomainHub
+        public string Tier { get; set; } = "";
+        public string Domain { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Purpose { get; set; } = "";
+        public string Owner { get; set; } = "";
+        public string Lifecycle { get; set; } = "Active";
+        public string PrimaryLanguage { get; set; } = "";
+        public List<string> Frameworks { get; set; } = new();
+        public int ThreatCount { get; set; }
+        public double QualityStars { get; set; }
+        public string ReviewGrade { get; set; } = "A";
+        public string RiskLevel { get; set; } = "Low";
+        public string ProductionReadiness { get; set; } = "Approved";
+
+        public string Subtitle { get; set; } = "";
+        public string ProviderOrEngine { get; set; } = "";
+        public string Criticality { get; set; } = "Medium";
+
+        public List<ConnectedServiceLink> ConnectedServices { get; set; } = new();
+        public List<ConnectedServiceLink> InboundCallers { get; set; } = new();
+        public List<ConnectedServiceLink> OutboundDependencies { get; set; } = new();
+        public List<DataStoreSpec> Datastores { get; set; } = new();
+        public List<DependencyItem> ExternalApis { get; set; } = new();
+        public List<EventContract> EventContracts { get; set; } = new();
+        public List<ThreatVector> Threats { get; set; } = new();
+        public List<ApiEndpoint> Endpoints { get; set; } = new();
+        public List<PackageDependency> KeyPackages { get; set; } = new();
+    }
+
+    public class ConnectedServiceLink
+    {
+        public string ServiceName { get; set; } = "";
+        public string Tier { get; set; } = "Backend";
+        public string Domain { get; set; } = "";
+        public string RoleOrProtocol { get; set; } = "";
+        public double Stars { get; set; } = 4.0;
+    }
+
+    protected override void OnInitialized()
+    {
+        if (string.IsNullOrWhiteSpace(_focalServiceName))
+        {
+            _focalServiceName = SpecRepo.GetAllSummaries().FirstOrDefault()?.Name ?? "";
+        }
+        LoadTopologyData();
+    }
+
+    private void LoadTopologyData()
+    {
+        _topologyData = SpecRepo.GetPagedSummaries(
+            page: _topologyPage,
+            pageSize: _topologyPageSize,
+            sortBy: "name");
+    }
+
+    private void SetTopologyPage(int page)
+    {
+        _topologyPage = page;
+        LoadTopologyData();
+    }
+
+    private void OnTopologyPageSizeChanged(int size)
+    {
+        _topologyPageSize = size;
+        _topologyPage = 1;
+        LoadTopologyData();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            if (_activePerspective == "studio")
+            {
+                await InitStudioCanvas();
+            }
+        }
+    }
+
+    private async Task SetPerspective(string p)
+    {
+        _activePerspective = p;
+        StateHasChanged();
+        await Task.Delay(50);
+
+        if (_activePerspective == "studio")
+        {
+            await InitStudioCanvas();
+        }
+    }
+
+    private async Task SetStudioMode(string mode)
+    {
+        _studioMode = mode;
+        _activeLayout = (mode == "focal" || mode == "workbench") ? "focal-flow" : "cose";
+        _activeDomainFilter = "";
+        StateHasChanged();
+        await Task.Delay(50);
+        await InitStudioCanvas();
+    }
+
+    private async Task SetStudioDomainFilter(string domain)
+    {
+        _activeDomainFilter = domain;
+        _studioMode = "domain";
+        StateHasChanged();
+        await Task.Delay(50);
+        await InitStudioCanvas();
+    }
+
+    private async Task SetC4Scope(string scope)
+    {
+        _activeC4Scope = scope;
+        StateHasChanged();
+        await Task.Delay(50);
+        await InitStudioCanvas();
+    }
+
+    private async Task OnFocalServiceSelectedAsync(string serviceName)
+    {
+        _focalServiceName = serviceName;
+        _studioMode = "focal";
+        StateHasChanged();
+        await Task.Delay(50);
+        await InitStudioCanvas();
+    }
+
+    private async Task OnWorkbenchAddServiceSelectedAsync(string serviceName)
+    {
+        if (string.IsNullOrWhiteSpace(serviceName)) return;
+        var res = SpecRepo.GetByName(serviceName);
+        if (res != null)
+        {
+            AddServiceToWorkbench(res);
+            _workbenchSelectedService = string.Empty;
+            await InitStudioCanvas();
+        }
+    }
+
+    private async Task PivotToFocal(string serviceName)
+    {
+        _focalServiceName = serviceName;
+        _activePerspective = "studio";
+        _studioMode = "focal";
+        _activeLayout = "focal-flow";
+        StateHasChanged();
+        await Task.Delay(50);
+        await InitStudioCanvas();
+    }
+
+    private async Task InitStudioCanvas()
+    {
+        var elementsJson = BuildCytoscapeElementsJson();
+        try
+        {
+            await JS.InvokeVoidAsync("ArchitectureStudio.init", "architecture-studio-canvas", elementsJson, _dotNetRef);
+            if (_studioMode == "focal" || _studioMode == "workbench")
+            {
+                await JS.InvokeVoidAsync("ArchitectureStudio.setLayout", "focal-flow");
+            }
+        }
+        catch { }
+    }
+
+    private string BuildCytoscapeElementsJson()
+    {
+        var resources = SpecRepo.GetAll();
+        var elements = new List<object>();
+        var addedNodeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // ==========================================
+        // MODE 1: 360° SERVICE FOCAL EXPLORER
+        // ==========================================
+        if (_studioMode == "focal")
+        {
+            var focalRes = resources.FirstOrDefault(r => string.Equals(r.Metadata.Name, _focalServiceName, StringComparison.OrdinalIgnoreCase)) 
+                           ?? resources.FirstOrDefault();
+
+            if (focalRes != null)
+            {
+                var cleanFocalId = CleanId(focalRes.Metadata.Name);
+                var isMortgage = focalRes.Metadata.Name.Contains("hypotheken", StringComparison.OrdinalIgnoreCase);
+                var isIot = focalRes.Metadata.Name.Contains("iot", StringComparison.OrdinalIgnoreCase);
+                var domainName = isMortgage ? "Dutch Mortgage & Lending Core" : (isIot ? "Smart Home & IoT Automation" : "Social Gaming & Financial Ledger");
+                var tier = focalRes.Spec?.ComponentOverview?.Tier ?? "Backend";
+                var stars = focalRes.Spec?.Quality?.SigStars ?? 4.0;
+                var threats = focalRes.Spec?.ThreatModel?.Threats?.Count ?? 0;
+                var risk = focalRes.Spec?.RiskSummary?.OverallRiskLevel ?? "Low";
+
+                // CENTER: Focal Active Microservice Node
+                elements.Add(new {
+                    data = new {
+                        id = cleanFocalId,
+                        label = $"⭐ {focalRes.Metadata.Name}\n[{tier} • {stars:0.0}★ • {threats} Threats]",
+                        name = focalRes.Metadata.Name,
+                        type = "Service",
+                        tier = tier,
+                        domain = domainName,
+                        threatCount = threats,
+                        qualityStars = stars,
+                        riskLevel = risk
+                    },
+                    classes = "focal-target"
+                });
+                addedNodeIds.Add(cleanFocalId);
+
+                // UPSTREAM: Other Caller Services Calling This Focal Service
+                foreach (var other in resources.Where(r => r.Metadata.Name != focalRes.Metadata.Name))
+                {
+                    var callsFocal = other.Spec?.Dependencies?.InternalServices != null &&
+                                     other.Spec.Dependencies.InternalServices.Any(s => string.Equals(s.Name, focalRes.Metadata.Name, StringComparison.OrdinalIgnoreCase));
+                    if (callsFocal)
+                    {
+                        var otherId = CleanId(other.Metadata.Name);
+                        if (addedNodeIds.Add(otherId))
+                        {
+                            elements.Add(new {
+                                data = new {
+                                    id = otherId,
+                                    label = $"📦 {other.Metadata.Name}\n(Caller Service)",
+                                    name = other.Metadata.Name,
+                                    type = "Service",
+                                    tier = other.Spec?.ComponentOverview?.Tier ?? "Backend",
+                                    domain = domainName,
+                                    threatCount = other.Spec?.ThreatModel?.Threats?.Count ?? 0,
+                                    qualityStars = other.Spec?.Quality?.SigStars ?? 4.0,
+                                    riskLevel = other.Spec?.RiskSummary?.OverallRiskLevel ?? "Low"
+                                }
+                            });
+                        }
+                        elements.Add(new {
+                            data = new {
+                                id = $"edge_{otherId}_{cleanFocalId}",
+                                source = otherId,
+                                target = cleanFocalId,
+                                label = "gRPC / Internal",
+                                type = "Internal"
+                            }
+                        });
+                    }
+                }
+
+                // DOWNSTREAM: Internal Dependencies Called By Focal
+                if (focalRes.Spec?.Dependencies?.InternalServices != null)
+                {
+                    foreach (var dep in focalRes.Spec.Dependencies.InternalServices)
+                    {
+                        var depId = CleanId(dep.Name);
+                        if (addedNodeIds.Add(depId))
+                        {
+                            var targetRes = resources.FirstOrDefault(r => string.Equals(r.Metadata.Name, dep.Name, StringComparison.OrdinalIgnoreCase));
+                            elements.Add(new {
+                                data = new {
+                                    id = depId,
+                                    label = $"📦 {dep.Name}\n({dep.ProtocolOrHost ?? "gRPC"})",
+                                    name = dep.Name,
+                                    type = "Service",
+                                    tier = targetRes?.Spec?.ComponentOverview?.Tier ?? "Backend",
+                                    domain = domainName,
+                                    threatCount = targetRes?.Spec?.ThreatModel?.Threats?.Count ?? 0,
+                                    qualityStars = targetRes?.Spec?.Quality?.SigStars ?? 4.0,
+                                    riskLevel = targetRes?.Spec?.RiskSummary?.OverallRiskLevel ?? "Low"
+                                }
+                            });
+                        }
+                        elements.Add(new {
+                            data = new {
+                                id = $"edge_{cleanFocalId}_{depId}",
+                                source = cleanFocalId,
+                                target = depId,
+                                label = dep.ProtocolOrHost ?? "gRPC",
+                                type = "Internal"
+                            }
+                        });
+                    }
+                }
+
+                // DOWNSTREAM: Datastores & Caches
+                var datastores = new List<DataStoreSpec>();
+                if (focalRes.Spec?.DataStores?.Databases != null) datastores.AddRange(focalRes.Spec.DataStores.Databases);
+                if (focalRes.Spec?.DataStores?.Caches != null) datastores.AddRange(focalRes.Spec.DataStores.Caches);
+
+                foreach (var db in datastores)
+                {
+                    var dbId = $"db_{CleanId(db.Name)}";
+                    if (addedNodeIds.Add(dbId))
+                    {
+                        elements.Add(new {
+                            data = new {
+                                id = dbId,
+                                label = $"🗄️ {db.Name}\n({db.Type})",
+                                name = db.Name,
+                                type = "Database",
+                                tier = db.Type ?? "Datastore",
+                                domain = domainName,
+                                dbType = db.Type,
+                                role = db.Role
+                            }
+                        });
+                    }
+                    elements.Add(new {
+                        data = new {
+                            id = $"edge_{cleanFocalId}_{dbId}",
+                            source = cleanFocalId,
+                            target = dbId,
+                            label = db.Role ?? "PERSISTS",
+                            type = "Datastore"
+                        }
+                    });
+                }
+
+                // DOWNSTREAM: External APIs
+                if (focalRes.Spec?.Dependencies?.ExternalApis != null)
+                {
+                    foreach (var ext in focalRes.Spec.Dependencies.ExternalApis)
+                    {
+                        var extId = $"ext_{CleanId(ext.Name)}";
+                        if (addedNodeIds.Add(extId))
+                        {
+                            elements.Add(new {
+                                data = new {
+                                    id = extId,
+                                    label = $"☁️ {ext.Name}\n({ext.Criticality})",
+                                    name = ext.Name,
+                                    type = "ExternalApi",
+                                    tier = "ExternalApi",
+                                    domain = domainName,
+                                    protocol = ext.ProtocolOrHost,
+                                    criticality = ext.Criticality,
+                                    purpose = ext.Purpose
+                                }
+                            });
+                        }
+                        elements.Add(new {
+                            data = new {
+                                id = $"edge_{cleanFocalId}_{extId}",
+                                source = cleanFocalId,
+                                target = extId,
+                                label = $"CALLS ({ext.Criticality})",
+                                type = "ExternalApi"
+                            }
+                        });
+                    }
+                }
+
+                // DOWNSTREAM: Event Topics
+                if (focalRes.Spec?.ApiContracts?.Events != null)
+                {
+                    foreach (var ev in focalRes.Spec.ApiContracts.Events.Take(4))
+                    {
+                        var evId = $"event_{CleanId(ev.TopicOrQueue)}";
+                        if (addedNodeIds.Add(evId))
+                        {
+                            elements.Add(new {
+                                data = new {
+                                    id = evId,
+                                    label = $"⚡ {ev.TopicOrQueue}\n({ev.PayloadType})",
+                                    name = ev.TopicOrQueue,
+                                    type = "EventTopic",
+                                    tier = "EventTopic",
+                                    domain = domainName,
+                                    purpose = ev.Action
+                                }
+                            });
+                        }
+                        elements.Add(new {
+                            data = new {
+                                id = $"edge_{cleanFocalId}_{evId}",
+                                source = cleanFocalId,
+                                target = evId,
+                                label = ev.Action ?? "Event",
+                                type = "EventStream"
+                            }
+                        });
+                    }
+                }
+
+                // DOWNSTREAM: Aggregated Package Bundle Node
+                var pkgCount = focalRes.Spec?.Dependencies?.KeyPackages?.Count ?? 0;
+                if (pkgCount > 0)
+                {
+                    var pkgBundleId = $"pkgbundle_{cleanFocalId}";
+                    if (addedNodeIds.Add(pkgBundleId))
+                    {
+                        elements.Add(new {
+                            data = new {
+                                id = pkgBundleId,
+                                label = $"📦 {pkgCount} NuGet Packages",
+                                name = $"{pkgCount} Packages",
+                                type = "PackageBundle",
+                                tier = "SupplyChain",
+                                domain = domainName
+                            }
+                        });
+                    }
+                    elements.Add(new {
+                        data = new {
+                            id = $"edge_{cleanFocalId}_{pkgBundleId}",
+                            source = cleanFocalId,
+                            target = pkgBundleId,
+                            label = "DEPENDS_ON",
+                            type = "KeyPackage"
+                        }
+                    });
+                }
+
+                return System.Text.Json.JsonSerializer.Serialize(elements);
+            }
+        }
+
+        // ==========================================
+        // MODE 2: DRAFT & EXPORT WORKBENCH
+        // ==========================================
+        if (_studioMode == "workbench")
+        {
+            if (_workbenchElements.Count == 0)
+            {
+                var first = resources.FirstOrDefault();
+                if (first != null)
+                {
+                    AddServiceToWorkbench(first);
+                }
+            }
+            return System.Text.Json.JsonSerializer.Serialize(_workbenchElements);
+        }
+
+        // ==========================================
+        // MODE 3: DOMAIN LANDSCAPE MACRO VIEW
+        // ==========================================
+        if (_studioMode == "domain")
+        {
+            var domainGroups = resources.GroupBy(r =>
+            {
+                if (r.Metadata.Name.Contains("hypotheken", StringComparison.OrdinalIgnoreCase)) return "Dutch Mortgage & Lending Core";
+                if (r.Metadata.Name.Contains("iot", StringComparison.OrdinalIgnoreCase)) return "Smart Home & IoT Automation";
+                return "Social Gaming & Financial Ledger";
+            });
+
+            foreach (var grp in domainGroups)
+            {
+                var domainId = $"dom_{CleanId(grp.Key)}";
+                var svcCount = grp.Count();
+                var dbCount = grp.Sum(r => (r.Spec?.DataStores?.Databases?.Count ?? 0) + (r.Spec?.DataStores?.Caches?.Count ?? 0));
+                var extCount = grp.Sum(r => r.Spec?.Dependencies?.ExternalApis?.Count ?? 0);
+                var avgStars = grp.Average(r => r.Spec?.Quality?.SigStars ?? 4.0);
+                var totalThreats = grp.Sum(r => r.Spec?.ThreatModel?.Threats?.Count ?? 0);
+
+                elements.Add(new {
+                    data = new {
+                        id = domainId,
+                        label = $"🏛️ {grp.Key}\n[{svcCount} Services • {dbCount} Stores • {extCount} APIs • {avgStars:0.0}★]",
+                        name = grp.Key,
+                        type = "DomainHub",
+                        tier = "Domain",
+                        domain = grp.Key,
+                        threatCount = totalThreats,
+                        qualityStars = avgStars,
+                        riskLevel = totalThreats > 3 ? "High" : "Low"
+                    }
+                });
+            }
+
+            return System.Text.Json.JsonSerializer.Serialize(elements);
+        }
+
+        // ==========================================
+        // MODE 4: FULL GLOBAL TOPOLOGY
+        // ==========================================
+        foreach (var res in resources)
+        {
+            var cleanId = CleanId(res.Metadata.Name);
+            var isMortgage = res.Metadata.Name.Contains("hypotheken", StringComparison.OrdinalIgnoreCase);
+            var domainName = isMortgage ? "Dutch Mortgage & Lending Core" : "Smart Home & IoT Automation";
+            var tier = res.Spec?.ComponentOverview?.Tier ?? "Backend";
+
+            elements.Add(new {
+                data = new {
+                    id = cleanId,
+                    label = $"📦 {res.Metadata.Name}\n({tier})",
+                    name = res.Metadata.Name,
+                    type = "Service",
+                    tier = tier,
+                    domain = domainName,
+                    threatCount = res.Spec?.ThreatModel?.Threats?.Count ?? 0,
+                    qualityStars = res.Spec?.Quality?.SigStars ?? 4.0,
+                    riskLevel = res.Spec?.RiskSummary?.OverallRiskLevel ?? "Low"
+                }
+            });
+
+            if (res.Spec?.Dependencies?.InternalServices != null)
+            {
+                foreach (var dep in res.Spec.Dependencies.InternalServices)
+                {
+                    elements.Add(new {
+                        data = new {
+                            id = $"edge_{cleanId}_{CleanId(dep.Name)}",
+                            source = cleanId,
+                            target = CleanId(dep.Name),
+                            label = dep.ProtocolOrHost ?? "Internal",
+                            type = "Internal"
+                        }
+                    });
+                }
+            }
+        }
+
+        return System.Text.Json.JsonSerializer.Serialize(elements);
+    }
+
+    // ==========================================
+    // WORKBENCH METHODS
+    // ==========================================
+    private void AddServiceToWorkbench(AtlasResource res)
+    {
+        var cleanId = CleanId(res.Metadata.Name);
+        if (_workbenchNodeIds.Add(cleanId))
+        {
+            _workbenchElements.Add(new {
+                data = new {
+                    id = cleanId,
+                    label = $"📦 {res.Metadata.Name}\n({res.Spec?.ComponentOverview?.Tier ?? "Service"})",
+                    name = res.Metadata.Name,
+                    type = "Service",
+                    tier = res.Spec?.ComponentOverview?.Tier ?? "Backend",
+                    domain = "Workbench",
+                    threatCount = res.Spec?.ThreatModel?.Threats?.Count ?? 0,
+                    qualityStars = res.Spec?.Quality?.SigStars ?? 4.0,
+                    riskLevel = res.Spec?.RiskSummary?.OverallRiskLevel ?? "Low"
+                }
+            });
+        }
+    }
+
+    private async Task WorkbenchExpandCallers()
+    {
+        if (_selectedNode == null || _selectedNode.Type != "Service") return;
+        var resources = SpecRepo.GetAll();
+        var targetName = _selectedNode.Name;
+        var cleanTargetId = CleanId(targetName);
+
+        foreach (var caller in resources.Where(r => r.Metadata.Name != targetName))
+        {
+            var calls = caller.Spec?.Dependencies?.InternalServices != null &&
+                        caller.Spec.Dependencies.InternalServices.Any(s => string.Equals(s.Name, targetName, StringComparison.OrdinalIgnoreCase));
+            if (calls)
+            {
+                AddServiceToWorkbench(caller);
+                var callerId = CleanId(caller.Metadata.Name);
+                _workbenchElements.Add(new {
+                    data = new {
+                        id = $"edge_{callerId}_{cleanTargetId}",
+                        source = callerId,
+                        target = cleanTargetId,
+                        label = "gRPC / Internal",
+                        type = "Internal"
+                    }
+                });
+            }
+        }
+        await InitStudioCanvas();
+    }
+
+    private async Task WorkbenchExpandDependencies()
+    {
+        if (_selectedNode == null || _selectedNode.Type != "Service") return;
+        var res = SpecRepo.GetByName(_selectedNode.Name);
+        if (res == null) return;
+        var cleanSourceId = CleanId(res.Metadata.Name);
+
+        if (res.Spec?.Dependencies?.InternalServices != null)
+        {
+            foreach (var dep in res.Spec.Dependencies.InternalServices)
+            {
+                var depRes = SpecRepo.GetByName(dep.Name);
+                if (depRes != null)
+                {
+                    AddServiceToWorkbench(depRes);
+                    var depId = CleanId(dep.Name);
+                    _workbenchElements.Add(new {
+                        data = new {
+                            id = $"edge_{cleanSourceId}_{depId}",
+                            source = cleanSourceId,
+                            target = depId,
+                            label = dep.ProtocolOrHost ?? "gRPC",
+                            type = "Internal"
+                        }
+                    });
+                }
+            }
+        }
+        await InitStudioCanvas();
+    }
+
+    private async Task WorkbenchRemoveSelectedNode()
+    {
+        if (_selectedNode == null) return;
+        _workbenchElements.RemoveAll(e => {
+            var json = System.Text.Json.JsonSerializer.Serialize(e);
+            return json.Contains($"\"id\":\"{_selectedNode.Id}\"") ||
+                   json.Contains($"\"source\":\"{_selectedNode.Id}\"") ||
+                   json.Contains($"\"target\":\"{_selectedNode.Id}\"");
+        });
+        _workbenchNodeIds.Remove(_selectedNode.Id);
+        _selectedNode = null;
+        await InitStudioCanvas();
+    }
+
+    private async Task WorkbenchClearCanvas()
+    {
+        _workbenchElements.Clear();
+        _workbenchNodeIds.Clear();
+        _selectedNode = null;
+        await JS.InvokeVoidAsync("ArchitectureStudio.clearCanvas");
+    }
+
+    private async Task ExportMermaidModal()
+    {
+        try
+        {
+            _mermaidC4Text = await JS.InvokeAsync<string>("ArchitectureStudio.exportMermaidC4");
+            _copiedMermaid = false;
+            _showMermaidModal = true;
+        }
+        catch { }
+    }
+
+    private async Task CopyMermaidToClipboard()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _mermaidC4Text);
+            _copiedMermaid = true;
+        }
+        catch { }
+    }
+
+    // ==========================================
+    // DEEP DRILLDOWN INTERACTIVITY HANDLERS
+    // ==========================================
+    [JSInvokable]
+    public async Task OnStudioNodeSelected(string nodeId)
+    {
+        PopulateSelectedNode(nodeId);
+        _drawerTab = "overview";
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnStudioNodeDoubleClicked(string nodeId)
+    {
+        if (nodeId.StartsWith("dom_"))
+        {
+            var cleanDom = nodeId.Replace("dom_", "");
+            var firstInDomain = SpecRepo.GetAll().FirstOrDefault(r => CleanId(r.Metadata.Name).Contains(cleanDom, StringComparison.OrdinalIgnoreCase) || cleanDom.Contains(CleanId(r.Metadata.Name), StringComparison.OrdinalIgnoreCase)) ?? SpecRepo.GetAll().FirstOrDefault();
+            if (firstInDomain != null)
+            {
+                await PivotToFocal(firstInDomain.Metadata.Name);
+            }
+            return;
+        }
+
+        var res = SpecRepo.GetAll().FirstOrDefault(r => string.Equals(CleanId(r.Metadata.Name), nodeId, StringComparison.OrdinalIgnoreCase));
+        if (res != null)
+        {
+            await PivotToFocal(res.Metadata.Name);
+            return;
+        }
+
+        PopulateSelectedNode(nodeId);
+        StateHasChanged();
+    }
+
+    private void PopulateSelectedNode(string nodeId)
+    {
+        var allResources = SpecRepo.GetAll();
+
+        // 1. Check if Node is a Microservice
+        var res = allResources.FirstOrDefault(r => string.Equals(CleanId(r.Metadata.Name), nodeId, StringComparison.OrdinalIgnoreCase));
+        if (res != null)
+        {
+            _selectedResource = res;
+            var spec = res.Spec;
+            var overview = spec?.ComponentOverview;
+            var tech = spec?.TechStack;
+            var qual = spec?.Quality;
+            var threatModel = spec?.ThreatModel;
+            var risk = spec?.RiskSummary;
+
+            var isMortgage = res.Metadata.Name.Contains("hypotheken", StringComparison.OrdinalIgnoreCase);
+            var isIot = res.Metadata.Name.Contains("iot", StringComparison.OrdinalIgnoreCase);
+            var domainName = isMortgage ? "Dutch Mortgage & Lending Core" : (isIot ? "Smart Home & IoT Automation" : "Platform Services");
+
+            // Upstream Callers
+            var inbound = new List<ConnectedServiceLink>();
+            foreach (var other in allResources.Where(r => r.Metadata.Name != res.Metadata.Name))
+            {
+                var calls = other.Spec?.Dependencies?.InternalServices != null &&
+                            other.Spec.Dependencies.InternalServices.Any(s => string.Equals(s.Name, res.Metadata.Name, StringComparison.OrdinalIgnoreCase));
+                if (calls)
+                {
+                    inbound.Add(new ConnectedServiceLink
+                    {
+                        ServiceName = other.Metadata.Name,
+                        Tier = other.Spec?.ComponentOverview?.Tier ?? "Backend",
+                        Domain = other.Metadata.Name.Contains("hypotheken", StringComparison.OrdinalIgnoreCase) ? "Dutch Mortgage" : "IoT",
+                        RoleOrProtocol = "gRPC / Internal",
+                        Stars = other.Spec?.Quality?.SigStars ?? 4.0
+                    });
+                }
+            }
+
+            // Downstream Dependencies
+            var outbound = new List<ConnectedServiceLink>();
+            if (spec?.Dependencies?.InternalServices != null)
+            {
+                foreach (var dep in spec.Dependencies.InternalServices)
+                {
+                    var target = allResources.FirstOrDefault(r => string.Equals(r.Metadata.Name, dep.Name, StringComparison.OrdinalIgnoreCase));
+                    outbound.Add(new ConnectedServiceLink
+                    {
+                        ServiceName = dep.Name,
+                        Tier = target?.Spec?.ComponentOverview?.Tier ?? "Backend",
+                        Domain = dep.Name.Contains("hypotheken", StringComparison.OrdinalIgnoreCase) ? "Dutch Mortgage" : "IoT",
+                        RoleOrProtocol = dep.ProtocolOrHost ?? "gRPC",
+                        Stars = target?.Spec?.Quality?.SigStars ?? 4.0
+                    });
+                }
+            }
+
+            _selectedNode = new SelectedNodeDto
+            {
+                Id = nodeId,
+                Name = res.Metadata.Name,
+                Type = "Service",
+                Tier = overview?.Tier ?? "Backend",
+                Domain = domainName,
+                Description = overview?.Description ?? "",
+                Purpose = overview?.Purpose ?? "",
+                Owner = overview?.Owner ?? "Enterprise Architecture",
+                Lifecycle = overview?.Lifecycle ?? "Active",
+                PrimaryLanguage = tech?.PrimaryLanguage ?? "C# / .NET",
+                Frameworks = tech?.Frameworks?.Select(f => f.Name).Where(n => !string.IsNullOrWhiteSpace(n)).ToList() ?? new List<string>(),
+                ThreatCount = threatModel?.Threats?.Count ?? 0,
+                QualityStars = qual?.SigStars ?? 4.0,
+                ReviewGrade = spec?.CodeReview?.ReviewGrade ?? "A",
+                RiskLevel = risk?.OverallRiskLevel ?? "Low",
+                ProductionReadiness = risk?.ProductionReadiness ?? "Approved",
+                InboundCallers = inbound,
+                OutboundDependencies = outbound,
+                Datastores = (spec?.DataStores?.Databases ?? new List<DataStoreSpec>()).Concat(spec?.DataStores?.Caches ?? new List<DataStoreSpec>()).ToList(),
+                ExternalApis = spec?.Dependencies?.ExternalApis ?? new List<DependencyItem>(),
+                EventContracts = spec?.ApiContracts?.Events ?? new List<EventContract>(),
+                Threats = threatModel?.Threats ?? new List<ThreatVector>(),
+                Endpoints = spec?.ApiContracts?.Endpoints ?? new List<ApiEndpoint>(),
+                KeyPackages = spec?.Dependencies?.KeyPackages ?? new List<PackageDependency>()
+            };
+            return;
+        }
+
+        // 2. Check if Node is a Database
+        if (nodeId.StartsWith("db_"))
+        {
+            var dbClean = nodeId.Replace("db_", "");
+            var connected = new List<ConnectedServiceLink>();
+
+            foreach (var r in allResources)
+            {
+                var usesDb = (r.Spec?.DataStores?.Databases != null && r.Spec.DataStores.Databases.Any(d => CleanId(d.Name).Contains(dbClean, StringComparison.OrdinalIgnoreCase) || dbClean.Contains(CleanId(d.Name), StringComparison.OrdinalIgnoreCase))) ||
+                             (r.Spec?.DataStores?.Caches != null && r.Spec.DataStores.Caches.Any(c => CleanId(c.Name).Contains(dbClean, StringComparison.OrdinalIgnoreCase) || dbClean.Contains(CleanId(c.Name), StringComparison.OrdinalIgnoreCase)));
+                if (usesDb)
+                {
+                    connected.Add(new ConnectedServiceLink
+                    {
+                        ServiceName = r.Metadata.Name,
+                        Tier = r.Spec?.ComponentOverview?.Tier ?? "Backend",
+                        Domain = r.Metadata.Name.Contains("hypotheken", StringComparison.OrdinalIgnoreCase) ? "Dutch Mortgage" : "IoT",
+                        RoleOrProtocol = "PERSISTS / READ_WRITE"
+                    });
+                }
+            }
+
+            _selectedResource = null;
+            _selectedNode = new SelectedNodeDto
+            {
+                Id = nodeId,
+                Name = dbClean.Replace("_", " "),
+                Type = "Database",
+                Tier = "Datastore",
+                Domain = "Data Layer",
+                Subtitle = $"Relational Database / Distributed Cache holding entity state",
+                ConnectedServices = connected
+            };
+            return;
+        }
+
+        // 3. Check if Node is an External API
+        if (nodeId.StartsWith("ext_"))
+        {
+            var extClean = nodeId.Replace("ext_", "");
+            var connected = new List<ConnectedServiceLink>();
+
+            foreach (var r in allResources)
+            {
+                var usesExt = r.Spec?.Dependencies?.ExternalApis != null &&
+                              r.Spec.Dependencies.ExternalApis.Any(e => CleanId(e.Name).Contains(extClean, StringComparison.OrdinalIgnoreCase) || extClean.Contains(CleanId(e.Name), StringComparison.OrdinalIgnoreCase));
+                if (usesExt)
+                {
+                    connected.Add(new ConnectedServiceLink
+                    {
+                        ServiceName = r.Metadata.Name,
+                        Tier = r.Spec?.ComponentOverview?.Tier ?? "Backend",
+                        Domain = r.Metadata.Name.Contains("hypotheken", StringComparison.OrdinalIgnoreCase) ? "Dutch Mortgage" : "IoT",
+                        RoleOrProtocol = "SaaS Consumer"
+                    });
+                }
+            }
+
+            _selectedResource = null;
+            _selectedNode = new SelectedNodeDto
+            {
+                Id = nodeId,
+                Name = extClean.Replace("_", " "),
+                Type = "ExternalApi",
+                Tier = "Cloud API",
+                Domain = "Third-Party SaaS & Integrations",
+                Subtitle = "External HTTP/REST or Cloud Service Provider",
+                ConnectedServices = connected
+            };
+            return;
+        }
+
+        // 4. Check if Node is an Event Topic
+        if (nodeId.StartsWith("event_"))
+        {
+            var eventClean = nodeId.Replace("event_", "");
+            var connected = new List<ConnectedServiceLink>();
+
+            foreach (var r in allResources)
+            {
+                var usesEvent = r.Spec?.ApiContracts?.Events != null &&
+                                r.Spec.ApiContracts.Events.Any(e => CleanId(e.TopicOrQueue).Contains(eventClean, StringComparison.OrdinalIgnoreCase) || eventClean.Contains(CleanId(e.TopicOrQueue), StringComparison.OrdinalIgnoreCase));
+                if (usesEvent)
+                {
+                    connected.Add(new ConnectedServiceLink
+                    {
+                        ServiceName = r.Metadata.Name,
+                        Tier = r.Spec?.ComponentOverview?.Tier ?? "Backend",
+                        Domain = r.Metadata.Name.Contains("hypotheken", StringComparison.OrdinalIgnoreCase) ? "Dutch Mortgage" : "IoT",
+                        RoleOrProtocol = "PUBLISHER / SUBSCRIBER"
+                    });
+                }
+            }
+
+            _selectedResource = null;
+            _selectedNode = new SelectedNodeDto
+            {
+                Id = nodeId,
+                Name = eventClean.Replace("_", " "),
+                Type = "EventTopic",
+                Tier = "Event Stream",
+                Domain = "Event Mesh & Messaging",
+                Subtitle = "Kafka / RabbitMQ Asynchronous Event Topic",
+                ConnectedServices = connected
+            };
+            return;
+        }
+
+        // 5. Check if Node is a Domain Hub
+        if (nodeId.StartsWith("dom_"))
+        {
+            var domClean = nodeId.Replace("dom_", "").Replace("_", " ");
+            var connected = allResources
+                .Where(r => r.Metadata.Name.Contains("hypotheken", StringComparison.OrdinalIgnoreCase) && domClean.Contains("mortgage", StringComparison.OrdinalIgnoreCase) ||
+                            r.Metadata.Name.Contains("iot", StringComparison.OrdinalIgnoreCase) && domClean.Contains("iot", StringComparison.OrdinalIgnoreCase))
+                .Select(r => new ConnectedServiceLink
+                {
+                    ServiceName = r.Metadata.Name,
+                    Tier = r.Spec?.ComponentOverview?.Tier ?? "Backend",
+                    Domain = domClean,
+                    RoleOrProtocol = "Member Microservice"
+                }).ToList();
+
+            _selectedResource = null;
+            _selectedNode = new SelectedNodeDto
+            {
+                Id = nodeId,
+                Name = domClean,
+                Type = "DomainHub",
+                Tier = "Domain Boundary",
+                Domain = domClean,
+                Subtitle = $"Bounded context grouping {connected.Count} microservices",
+                ConnectedServices = connected
+            };
+            return;
+        }
+
+        // Fallback generic node
+        _selectedResource = null;
+        _selectedNode = new SelectedNodeDto
+        {
+            Id = nodeId,
+            Name = nodeId,
+            Type = "Component",
+            Tier = "Infrastructure",
+            Domain = "Enterprise Architecture",
+            Subtitle = "Architecture node"
+        };
+    }
+
+    [JSInvokable]
+    public void OnStudioBackgroundClicked()
+    {
+        _selectedNode = null;
+        _selectedResource = null;
+        StateHasChanged();
+    }
+
+    private void CloseInspector()
+    {
+        _selectedNode = null;
+        _selectedResource = null;
+        JS.InvokeVoidAsync("ArchitectureStudio.clearHighlights");
+    }
+
+    private async Task OnLayoutChanged(ChangeEventArgs e)
+    {
+        _activeLayout = e.Value?.ToString() ?? "cose";
+        await JS.InvokeVoidAsync("ArchitectureStudio.setLayout", _activeLayout);
+    }
+
+    private async Task OnLensChanged(ChangeEventArgs e)
+    {
+        _activeLens = e.Value?.ToString() ?? "default";
+        await JS.InvokeVoidAsync("ArchitectureStudio.setLens", _activeLens);
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? "";
+        await JS.InvokeVoidAsync("ArchitectureStudio.searchAndFocus", _searchQuery);
+    }
+
+    private async Task SimulateOutage(string nodeId)
+    {
+        await JS.InvokeVoidAsync("ArchitectureStudio.simulateOutageCascade", nodeId);
+    }
+
+    private async Task ZoomIn() => await JS.InvokeVoidAsync("ArchitectureStudio.zoomIn");
+    private async Task ZoomOut() => await JS.InvokeVoidAsync("ArchitectureStudio.zoomOut");
+    private async Task ZoomToFit() => await JS.InvokeVoidAsync("ArchitectureStudio.zoomToFit");
+    private async Task ToggleFullscreen() => await JS.InvokeVoidAsync("ArchitectureStudio.toggleFullscreen", "studio-canvas-wrapper");
+    private async Task ExportPng() => await JS.InvokeVoidAsync("ArchitectureStudio.exportPng");
+
+    private static string CleanId(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "unknown";
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in raw)
+        {
+            if (char.IsLetterOrDigit(c) || c == '_') sb.Append(c);
+            else sb.Append('_');
+        }
+        return sb.ToString();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+    }
+}
